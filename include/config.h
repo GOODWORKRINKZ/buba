@@ -1,72 +1,76 @@
 #pragma once
 
 // ============================================================
-//  config.h – hardware pin map and protocol tuning
+//  config.h – BU04 (DW3000 + STM32F103) + ESP32-C3 SuperMini
 //
-//  Wiring: BU04 UWB module  →  ESP32-C3 SuperMini
-//  -------------------------------------------------------
-//  BU04 pin   Signal    ESP32-C3 pin
-//  --------   ------    ------------
-//  VCC        3.3 V     3V3
-//  GND        GND       GND
-//  SCK        SPI_CLK   GPIO 4
-//  MISO       SPI_MISO  GPIO 5
-//  MOSI       SPI_MOSI  GPIO 6
-//  NSS/CS     SPI_CS    GPIO 7
-//  RST        RESET     GPIO 8
-//  IRQ        INT       GPIO 9
+//  BU04 управляется AT-командами по UART через STM32F103.
+//  НЕ нужен SPI — DW3000 скрыт внутри модуля.
+//
+//  Подключение BU04 → ESP32-C3 SuperMini
+//  ┌────────────────────────────────────────────────────────┐
+//  │ BU04 пин     Назначение           ESP32-C3 пин        │
+//  │ ──────────   ──────────────────   ───────────────────  │
+//  │ 34 / 24 / 23 3V3 (питание)       3V3  (500 мА пик!)  │
+//  │ 1 / 10       GND                 GND                  │
+//  │ PA2 (пин 4)  USART2_TX (выход)   GPIO 3  ← RX        │
+//  │ PA3 (пин 5)  USART2_RX (вход)    GPIO 2  → TX        │
+//  └────────────────────────────────────────────────────────┘
+//
+//  Альтернативный UART (если USART2 не отвечает):
+//  │ PA9  (пин 26) USART1_TX → GPIO 3                      │
+//  │ PA10 (пин 27) USART1_RX ← GPIO 2                      │
+//
+//  Источник: BU04 规格书 V1.0.0, таблица 5 (управление пинами)
 // ============================================================
 
-// ----- SPI / DW1000 pins -----------------------------------
-#define PIN_SPI_SCK    4
-#define PIN_SPI_MISO   5
-#define PIN_SPI_MOSI   6
-#define PIN_DW_CS      7    // chip-select (NSS)
-#define PIN_DW_RST     8    // reset (active-low)
-#define PIN_DW_IRQ     9    // interrupt (active-high)
+// ----- UART к BU04 (USART2: PA2=TX, PA3=RX) ----------------
+#define PIN_BU04_TX    2     // ESP32-C3 TX → BU04 PA3 (USART2_RX, пин 5)
+#define PIN_BU04_RX    3     // ESP32-C3 RX ← BU04 PA2 (USART2_TX, пин 4)
+#define BU04_BAUD      115200
 
-// ----- Protocol tuning -------------------------------------
-// How often the TAG initiates a new ranging round (ms)
-#define RANGING_INTERVAL_MS   200
+// ----- USB Serial (телеметрия на ПК) -----------------------
+#define SERIAL_BAUD    115200
 
-// Guard delay after transmit before switching to RX (µs)
-#define TX_TO_RX_DELAY_US     1000
+// ----- Конфигурация BU04 -----------------------------------
+//   role:    0 = тег (TAG, движется),  1 = база (ANCHOR, стоит)
+//   channel: 0 = CH9 (7987.2 МГц),    1 = CH5  (6489.5 МГц)
+//   rate:    0 = 850 кбит/с,           1 = 6.8  Мбит/с
+#define BU04_CHANNEL      1    // CH5
+#define BU04_RATE         1    // 6.8 Мбит/с
 
-// RX timeout for any expected reply (ms, 0 = infinite)
-#define RX_TIMEOUT_MS         200
+// ID: тег и anchor1 ДОЛЖНЫ иметь одинаковый ID (требование протокола)
+#define BU04_ID_ANCHOR1   0
+#define BU04_ID_ANCHOR2   1
+#define BU04_ID_TAG       0    // = BU04_ID_ANCHOR1
 
-// Speed of light in air (m/s), used for ToF → distance
-#define SPEED_OF_LIGHT        299702547.0
+// ----- Геометрия платформы ---------------------------------
+// Точно измерьте расстояние между ANCHOR1 и ANCHOR2 (метры).
+// Рекомендуется 20–50 см; большая база → точнее угол.
+#define BASELINE_M        0.30f   // 30 см (по умолчанию)
 
-// DW1000 timestamp resolution (seconds per DW1000 tick)
-// 1 tick = ~15.65 ps  → 1 / (128 * 499.2e6)
-#define DW1000_TIME_RES_S     (1.0 / (128.0 * 499.2e6))
+// ----- ESP-NOW: ANCHOR2 → ANCHOR1 --------------------------
+// Порядок настройки:
+//   1. Прошейте anchor1 и откройте Serial Monitor (115200).
+//      Появится строка:  # MAC ANCHOR1: XX:XX:XX:XX:XX:XX
+//   2. Скопируйте MAC в виде {0xXX,0xXX,0xXX,0xXX,0xXX,0xXX}
+//   3. Вставьте ниже и прошейте anchor2.
+#define ANCHOR1_MAC       {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}  // ← ЗАМЕНИТЬ!
+#define ESPNOW_MAGIC      0xBB04   // маркер пакета (защита от чужих пакетов)
 
-// Maximum plausible distance (metres) – sanity-check filter
-#define MAX_VALID_DISTANCE_M  300.0
+// ----- Тайминги --------------------------------------------
+#define POLL_INTERVAL_MS    200    // период запроса AT+DISTANCE (мс)
+#define IMU_INTERVAL_MS     500    // период запроса AT+GETSENSOR (мс, только TAG)
+#define ANCHOR2_STALE_MS   1000    // данные anchor2 «протухают» через N мс
 
-// Number of consecutive measurements to smooth (moving avg)
-#define MOVING_AVG_SAMPLES    5
+// ----- Обработка данных ------------------------------------
+#define MOVING_AVG_SAMPLES  5      // скользящее среднее (измерений)
+#define MAX_VALID_DIST_M   50.0f   // максимально допустимое расстояние (м)
 
-// ----- DS-TWR message types --------------------------------
-#define MSG_POLL              0x01   // TAG  → ANCHOR
-#define MSG_POLL_ACK          0x02   // ANCHOR → TAG
-#define MSG_FINAL             0x03   // TAG  → ANCHOR
-#define MSG_RANGE_REPORT      0x04   // ANCHOR → TAG (distance)
-
-// ----- Message frame layout --------------------------------
-// All frames:
-//   [0]  message type (uint8)
-//   [1]  sequence number (uint8)
-//   [2..] payload (type-specific)
-//
-// MSG_FINAL payload  [2..25]  three DW1000 40-bit timestamps:
-//   t_poll_tx (5 bytes) | t_poll_ack_rx (5 bytes) | t_final_tx (5 bytes)
-//
-// MSG_RANGE_REPORT payload [2..5]:
-//   distance in mm as uint32_t (little-endian)
-
-#define FRAME_LEN_POLL          2
-#define FRAME_LEN_POLL_ACK      2
-#define FRAME_LEN_FINAL        17    // 2 header + 3×5 timestamps
-#define FRAME_LEN_RANGE_REPORT  6    // 2 header + 4 bytes (mm)
+// ----- Строки AT-команд BU04 -------------------------------
+// Источник: BU03/BU04 AT指令 v1.0.2 + опытные данные DipFlip/ultra-wideband-positioning
+#define AT_GETCFG      "AT+GETCFG"
+#define AT_GETVER      "AT+GETVER"
+#define AT_DISTANCE    "AT+DISTANCE"
+#define AT_GETSENSOR   "AT+GETSENSOR"   // акселерометр (только TTL-порт)
+#define AT_SAVE        "AT+SAVE"        // сохранить конфиг → перезагрузка ~3 с
+#define AT_RESTART     "AT+RESTART"

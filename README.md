@@ -1,148 +1,188 @@
-# buba – BU04 Ai-Thinker UWB distance telemetry
+# BU04 UWB — Телеметрия дистанции и направления
 
-Test project for the **Ai-Thinker BU04 UWB module** connected to an
-**ESP32-C3 SuperMini**.  
-One module is mounted on a mobile platform (**TAG**) and the other is
-carried by the user (**ANCHOR**).  
-The firmware measures the distance between them using
-**Double-Sided Two-Way Ranging (DS-TWR)** and streams telemetry over USB-Serial.
+Прошивка для **ESP32-C3 SuperMini** + **BU04 UWB** (DW3000 + STM32F103).  
+Платформа определяет **дистанцию** и **направление** до тега в руках пользователя.
 
 ---
 
-## Hardware
-
-| Qty | Part |
-|-----|------|
-| 2   | Ai-Thinker BU04 UWB module (Decawave DW1000) |
-| 2   | ESP32-C3 SuperMini dev board |
-| 2   | USB-C cables (flashing / power) |
-
-### Wiring (same for both devices)
+## Обзор системы
 
 ```
-BU04 pin   Signal     ESP32-C3 SuperMini pin
-────────   ──────     ──────────────────────
-VCC        3.3 V      3V3
-GND        GND        GND
-SCK        SPI CLK    GPIO 4
-MISO       SPI MISO   GPIO 5
-MOSI       SPI MOSI   GPIO 6
-NSS/CS     SPI CS     GPIO 7
-RST        RESET      GPIO 8
-IRQ        INT        GPIO 9
+Платформа (неподвижна)                    Пользователь
+┌──────────────┐  30 см  ┌──────────────┐
+│ ESP32 ANCHOR1│◄ESP-NOW►│ ESP32 ANCHOR2│      ┌─────────────┐
+│ BU04 (база)  │         │ BU04 (база)  │      │ ESP32 TAG   │
+└──────┬───────┘         └──────┬───────┘      │ BU04 (тег)  │
+       │ d1                     │ d2            └──────┬──────┘
+       │◄───────────────────────┼───────────────────►  │
+       │                        │◄──────────────────►  │
+       ▼ USB Serial 115200
+  PLATFORM,seq,d1,d2,angle,x,y,ts_ms
 ```
+
+- **ANCHOR1** и **ANCHOR2** — два BU04 на платформе, расстояние **30 см** (baseline).
+- **TAG** — BU04 в руках пользователя.
+- ANCHOR2 передаёт дистанцию d2 на ANCHOR1 через **ESP-NOW** (беспроводно, без проводов).
 
 ---
 
-## Project structure
+## Оборудование
 
-```
-buba/
-├── platformio.ini      – two build environments: anchor / tag
-├── include/
-│   └── config.h        – pin map, protocol constants, tuning
-└── src/
-    └── main.cpp        – DS-TWR firmware (role selected at compile time)
-```
+| Кол-во | Устройство |
+|--------|-----------|
+| 3 | Ai-Thinker BU04 UWB модуль (DW3000 + STM32F103) |
+| 3 | ESP32-C3 SuperMini |
 
 ---
 
-## Building & flashing
+## Подключение BU04 → ESP32-C3
 
-Install [PlatformIO CLI](https://platformio.org/install/cli) or use the
-VS Code extension.
+> Источник: BU04 规格书 V1.0.0, таблица 5.  
+> **BU04 управляется AT-командами по UART. SPI не нужен.**
+
+| BU04 пин | Название | ESP32-C3 | Примечание |
+|----------|----------|----------|------------|
+| 34 / 24 / 23 | 3V3 | 3V3 | Пик тока ≥ 500 мА! |
+| 1 / 10 | GND | GND | |
+| **4** (PA2) | USART2_TX | **GPIO 3 (RX)** | BU04 → ESP32 |
+| **5** (PA3) | USART2_RX | **GPIO 2 (TX)** | ESP32 → BU04 |
+
+> Если USART2 не отвечает: попробуйте PA9 (пин 26) TX и PA10 (пин 27) RX (USART1).
+
+---
+
+## Быстрый старт
+
+### 1. Установите PlatformIO
 
 ```bash
-# Flash the ANCHOR firmware (device the user carries)
-pio run -e anchor -t upload
-
-# Flash the TAG firmware (device on the mobile platform)
-pio run -e tag -t upload
+pip install platformio
 ```
 
-Open Serial monitors (115 200 baud) on both devices:
+### 2. Прошейте ANCHOR1, узнайте его MAC
 
 ```bash
+pio run -e anchor1 -t upload
 pio device monitor -b 115200
 ```
 
----
-
-## Telemetry output (CSV over Serial)
-
-**TAG** (mobile platform):
+В консоли появится:
 ```
-# CSV: TAG,seq,distance_m,distance_mm,avg_m,timestamp_ms
-TAG,1,1.234,1234,1.234,5012
-TAG,2,1.251,1251,1.242,5212
+# MAC ANCHOR1: AA:BB:CC:DD:EE:FF
 ```
 
-**ANCHOR** (user-held):
-```
-# CSV: ANCHOR,seq,distance_m,distance_mm,timestamp_ms
-ANCHOR,1,1.234,1234,5011
-ANCHOR,2,1.251,1251,5211
-```
+### 3. Впишите MAC в `include/config.h`
 
-| Field | Description |
-|-------|-------------|
-| `seq` | Sequence number (increments each round) |
-| `distance_m` | Measured distance in metres (3 decimal places) |
-| `distance_mm` | Distance in whole millimetres |
-| `avg_m` | (TAG only) Moving average over last 5 samples |
-| `timestamp_ms` | `millis()` on the device at measurement time |
-
----
-
-## Protocol overview (DS-TWR)
-
-```
-TAG                                ANCHOR
- │                                    │
- │──── POLL (t1) ────────────────────►│ t2
- │                                    │
- │◄─── POLL_ACK (t3) ─────────────────│
- │ t4                                 │
- │                                    │
- │──── FINAL [t1,t4,t5] (t5) ────────►│ t6
- │                                    │
- │◄─── RANGE_REPORT [dist_mm] ────────│
- │                                    │
+```c
+#define ANCHOR1_MAC  {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF}
 ```
 
-Distance formula:
+### 4. Прошейте ANCHOR2 и TAG
+
+```bash
+pio run -e anchor2 -t upload
+pio run -e tag     -t upload
+```
+
+### 5. Откройте монитор ANCHOR1 (115200 бод)
 
 ```
-Ra = t4 - t1  (tag round-trip)
-Rb = t6 - t3  (anchor round-trip)
-Da = t5 - t4  (tag reply delay)
-Db = t3 - t2  (anchor reply delay)
-
-ToF   = (Ra·Rb − Da·Db) / (Ra + Rb + Da + Db)
-dist  = ToF × 299 702 547 m/s × 15.65 ps/tick
+# BU04 UWB – ANCHOR1 (главный якорь)
+# MAC ANCHOR1: AA:BB:CC:DD:EE:FF
+# Запуск измерений…
+ANCHOR1,1,1.234,1.189,12345
+PLATFORM,1,1.234,1.567,42.3,0.891,0.834,12345
 ```
 
 ---
 
-## Tuning
+## Структура проекта
 
-Edit `include/config.h` to adjust:
-
-| Constant | Default | Description |
-|----------|---------|-------------|
-| `RANGING_INTERVAL_MS` | 200 | Time between TAG ranging rounds (ms) |
-| `RX_TIMEOUT_MS` | 200 | Reply timeout per message (ms) |
-| `MOVING_AVG_SAMPLES` | 5 | Smoothing window size |
-| `MAX_VALID_DISTANCE_M` | 300 | Max accepted distance for sanity filter |
+```
+buba/
+├── platformio.ini         – три окружения: anchor1 / anchor2 / tag
+├── include/
+│   └── config.h           – UART-пины, AT-команды, геометрия, ESP-NOW MAC
+└── src/
+    └── main.cpp           – прошивка (роль выбирается при компиляции)
+```
 
 ---
 
-## Notes on direction / AoA
+## Формат телеметрии
 
-The BU04 module (single antenna, DW1000 chip) provides **distance only**.
-Direction / Angle of Arrival (AoA) requires either:
-* a multi-antenna module (e.g. DW3000-based), **or**
-* deploying 3+ anchors at known positions and doing trilateration.
+| Строка | Формат | Описание |
+|--------|--------|----------|
+| `ANCHOR1` | `ANCHOR1,seq,d1_m,avg_m,ts_ms` | Дистанция ANCHOR1→TAG |
+| `ANCHOR2` | `ANCHOR2,seq,d2_m,ts_ms` | Дистанция ANCHOR2→TAG |
+| `PLATFORM` | `PLATFORM,seq,d1_m,d2_m,angle_deg,x_m,y_m,ts_ms` | Позиция тега в СК платформы |
+| `TAG` | `TAG,seq,d_m,avg_m,ts_ms` | Дистанция со стороны тега |
+| `IMU` | `IMU,<данные BU04>,ts_ms` | Акселерометр (только TAG, TTL-порт) |
 
-For the current telemetry phase, distance data alone is sufficient to
-characterise the setup and validate hardware behaviour.
+**Поля PLATFORM:**
+
+| Поле | Описание |
+|------|----------|
+| `d1_m` | Дистанция ANCHOR1 → TAG (м) |
+| `d2_m` | Дистанция ANCHOR2 → TAG (м) |
+| `angle_deg` | Угол тега от оси ANCHOR1→ANCHOR2 (°) |
+| `x_m` | Проекция вдоль оси платформы (м) |
+| `y_m` | Поперечное расстояние от оси (м) |
+
+---
+
+## Математика направления
+
+```
+ANCHOR1(0,0) ──── B ──── ANCHOR2(B,0)
+
+              TAG(x, y)
+
+x = (d1² − d2² + B²) / (2·B)
+y = √(d1² − x²)
+β = atan2(y, x)   ← угол от оси платформы
+```
+
+> **Ограничение:** знак `y` не определён (тег может быть с любой стороны оси).  
+> Для полного 3D нужен третий якорь или IMU.
+
+---
+
+## Об ориентации тега
+
+Пользователь держит тег произвольно. UWB измеряет расстояние по **времени полёта (ToF)** — ориентация антенны влияет только на уровень сигнала, но не на точность дистанции.
+
+BU04 аппаратно поддерживает **PDOA** (Phase Difference of Arrival) через две антенны — это позволит определять угол **одним модулем**. Соответствующая AT-команда не задокументирована в текущей прошивке (отмечено `TODO_PDOA` в коде). При появлении документации схему можно упростить до 2 устройств.
+
+---
+
+## AT-команды BU04
+
+| Команда | Описание |
+|---------|----------|
+| `AT+SETCFG=id,role,ch,rate` | Конфигурация: ID, роль (0=тег/1=база), канал, скорость |
+| `AT+GETCFG` | Чтение конфигурации |
+| `AT+GETVER` | Версия прошивки |
+| `AT+DISTANCE` | Запросить дистанцию (ответ: `distance: X.XXX`) |
+| `AT+GETSENSOR` | Данные акселерометра (только TTL-порт) |
+| `AT+SAVE` | Сохранить → перезагрузка ~3 с |
+| `AT+RESTART` | Перезагрузка |
+
+---
+
+## Технические характеристики BU04
+
+| Параметр | Значение |
+|----------|---------|
+| Чип | Decawave DW3000 + STM32F103 |
+| Антенны | 2 (PCB или IPEX) |
+| Стандарт | IEEE 802.15.4-2015 UWB, 802.15.4z (BPRF) |
+| Каналы | CH5 (6489.5 МГц), CH9 (7987.2 МГц) |
+| Скорость | 850 кбит/с, 6.8 Мбит/с |
+| Точность | ~10 см |
+| Интерфейсы | UART (AT-команды), SPI, I2C |
+| Питание | 3.3 В, пик 500 мА |
+| Размер | 35.5 × 33.5 × 3.4 мм |
+| Температура | −40 … +85 °C |
+
+Источник: [BU04 规格书 V1.0.0](bu04_v1.0.0规格书20240801.pdf), [DipFlip/ultra-wideband-positioning](https://github.com/DipFlip/ultra-wideband-positioning).
