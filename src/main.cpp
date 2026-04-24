@@ -8,33 +8,42 @@
  *
  * BU04 управляется AT-командами по UART (PA2/PA3 = USART2).
  * Чип DW3000 скрыт за STM32F103, доступен только через AT-интерфейс.
+ * Источник AT-команд: BU03/BU04 AT指令 V1.0.6
  *
- * ───────────── Геометрия направления (2D) ─────────────────
+ * ───────────── Режимы UWB ─────────────────────────────────
  *
- *   ANCHOR1 ──── B (baseline) ──── ANCHOR2
- *    (0, 0)                         (B, 0)
+ *  TWR (по умолчанию, #define PDOA_MODE НЕ задан):
+ *    Два якоря на платформе + тег. Каждый якорь измеряет AT+DISTANCE
+ *    до тега. ANCHOR2 шлёт d2 на ANCHOR1 по ESP-NOW. ANCHOR1 считает
+ *    координаты x/y и угол β методом трилатерации.
  *
- *       TAG(x, y)
+ *    ANCHOR1(0,0) ──── B ──── ANCHOR2(B,0)
+ *                TAG(x, y)
+ *    x = (d1² − d2² + B²) / (2·B)
+ *    y = √(d1² − x²)
+ *    β = atan2(y, x)   ← угол от оси ANCHOR1→ANCHOR2
  *
- *   Из теоремы косинусов / перпендикуляра:
- *     x   = (d1² - d2² + B²) / (2·B)
- *     y   = √(d1² - x²)          ← y > 0, сторона не определена без 3-го якоря
- *     β   = atan2(y, x)           ← угол от оси ANCHOR1→ANCHOR2
+ *  PDOA (#define PDOA_MODE задан):
+ *    Один якорь с двумя антеннами измеряет угол + расстояние до тега
+ *    с помощью фазовой разности (Phase Difference of Arrival).
+ *    ANCHOR2 и ESP-NOW не нужны. Якорь работает в режиме AT+SETUWBMODE=1,
+ *    данные поступают как JSON-пакеты (AT+USER_CMD=0) при регистрации
+ *    тега командой AT+ADDTAG.
  *
- *   Примечание: DW3000 поддерживает PDOA (фазовую разность приёма),
- *   что теоретически позволяет определить угол одним модулем.
- *   Однако AT-команда для PDOA в текущей прошивке BU04 не задокументирована.
- *   Код готов к добавлению PDOA: см. метку TODO_PDOA.
- *
- * ───────────── Связь между якорями ────────────────────────
- *   ANCHOR2 → ANCHOR1 через ESP-NOW (WiFi-чип ESP32-C3, без проводов)
+ * ───────────── Ориентация тега ────────────────────────────
+ *   Пользователь держит тег произвольно. UWB измеряет расстояние
+ *   по времени полёта (ToF) — ориентация антенны не влияет на
+ *   точность дистанции при нормальном SNR. PDOA-угол измеряется
+ *   в плоскости двух антенн якоря и не зависит от ориентации тега.
  *
  * ───────────── Формат телеметрии (CSV, 115200 бод) ─────────
- *   PLATFORM,seq,d1_m,d2_m,angle_deg,x_m,y_m,ts_ms
+ *  TWR:
  *   ANCHOR1,seq,d1_m,avg_m,ts_ms
  *   ANCHOR2,seq,d2_m,ts_ms
+ *   PLATFORM,seq,d1_m,d2_m,angle_deg,x_m,y_m,ts_ms
  *   TAG,seq,d_m,avg_m,ts_ms
- *   IMU,<сырые данные BU04>,ts_ms
+ *  PDOA:
+ *   PDOA,seq,dist_m,angle_deg,ts_ms
  */
 
 #include <Arduino.h>
@@ -126,14 +135,19 @@ static float updateAvg(float v) {
     return s / n;
 }
 
-// Настройка BU04: AT+SETCFG=id,role,ch,rate → AT+SAVE (перезагрузка ~3 с)
+// Настройка BU04: AT+SETCFG=ID,Role,CH,Rate,Group → AT+SAVE (перезагрузка ~3 с)
+// Источник: BU03/BU04 AT指令 V1.0.6, раздел 1
+// Rate всегда 1 (6.8 Мбит/с — единственный поддерживаемый вариант).
+// Group: якоря настраивают в свою группу; теги оставляют 0.
 static void configureBU04(uint8_t id, uint8_t role) {
-    Serial.printf("# Настройка BU04: id=%u role=%u ch=%u rate=%u\n",
-                  id, role, BU04_CHANNEL, BU04_RATE);
-    String cmd = "AT+SETCFG=" + String(id)            + ","
-                               + String(role)          + ","
-                               + String(BU04_CHANNEL)  + ","
-                               + String(BU04_RATE);
+    uint8_t group = (role == 1) ? BU04_GROUP : 0;
+    Serial.printf("# Настройка BU04: id=%u role=%u ch=%u rate=%u group=%u\n",
+                  id, role, BU04_CHANNEL, BU04_RATE, group);
+    String cmd = "AT+SETCFG=" + String(id)           + ","
+                               + String(role)         + ","
+                               + String(BU04_CHANNEL) + ","
+                               + String(BU04_RATE)    + ","
+                               + String(group);
     String resp = sendAT(cmd, 1500);
     if (resp.indexOf("OK") >= 0) {
         Serial.println("# Сохранение, BU04 перезагружается (~3 с)…");
@@ -237,16 +251,46 @@ void setup() {
 
 #if defined(ROLE_ANCHOR1)
     Serial.println("# ========================================");
-    Serial.println("# BU04 UWB – ANCHOR1 (главный якорь)");
+#if defined(PDOA_MODE)
+    Serial.println("# BU04 UWB – ANCHOR1 (PDOA режим, 1 якорь)");
+    Serial.println("# CSV: PDOA,seq,dist_m,angle_deg,ts_ms");
+#else
+    Serial.println("# BU04 UWB – ANCHOR1 (TWR режим, главный якорь)");
     Serial.println("# CSV ANCHOR1:  ANCHOR1,seq,d1_m,avg_m,ts_ms");
     Serial.println("# CSV PLATFORM: PLATFORM,seq,d1_m,d2_m,angle_deg,x_m,y_m,ts_ms");
+#endif
     Serial.println("# ========================================");
     configureBU04(BU04_ID_ANCHOR1, /*role=*/1);
+
+#if defined(PDOA_MODE)
+    // Переключаем BU04 в режим PDOA (AT+SETUWBMODE=1), если ещё не был
+    {
+        String mode = sendAT(AT_GETUWBMODE, 600);
+        if (mode.indexOf('1') < 0) {
+            Serial.println("# Переключение BU04 в режим PDOA…");
+            String r = sendAT(AT_SETUWBMODE_PDOA, 1000);
+            if (r.indexOf("OK") >= 0) {
+                bu04.println(AT_SAVE);
+                delay(3500); flushBU04();
+                Serial.println("# PDOA включён");
+            } else {
+                Serial.println("# Ошибка переключения PDOA: " + r);
+            }
+        } else {
+            Serial.println("# BU04 уже в режиме PDOA");
+        }
+        // Устанавливаем JSON-вывод
+        sendAT(AT_USER_CMD_JSON, 500);
+        Serial.println("# Формат вывода: JSON");
+        Serial.println("# Добавьте тег: AT+ADDTAG=<LongAddr64>,<ShortAddr>,1,64,0");
+    }
+#else
     initESPNow();
+#endif
 
 #elif defined(ROLE_ANCHOR2)
     Serial.println("# ========================================");
-    Serial.println("# BU04 UWB – ANCHOR2 (ведомый якорь)");
+    Serial.println("# BU04 UWB – ANCHOR2 (TWR режим, ведомый якорь)");
     Serial.println("# CSV: ANCHOR2,seq,d2_m,ts_ms");
     Serial.println("# ========================================");
     configureBU04(BU04_ID_ANCHOR2, /*role=*/1);
@@ -256,11 +300,10 @@ void setup() {
     Serial.println("# ========================================");
     Serial.println("# BU04 UWB – TAG (пользователь)");
     Serial.println("# CSV: TAG,seq,d_m,avg_m,ts_ms");
-    Serial.println("# IMU: IMU,<данные акселерометра BU04>,ts_ms");
+    // Примечание: AT+GETSENSOR поддерживает только BU03.
+    // BU04 акселерометра не имеет (нет аппаратной поддержки).
     Serial.println("# ========================================");
     configureBU04(BU04_ID_TAG, /*role=*/0);
-    // TODO_PDOA: если Ai-Thinker опубликует AT-команду для PDOA-угла,
-    //            добавить её здесь для получения направления двумя модулями.
 #endif
 
     Serial.println("# Запуск измерений…");
@@ -271,7 +314,6 @@ void setup() {
 // ============================================================
 void loop() {
     static uint32_t lastDist = 0;
-    static uint32_t lastImu  = 0;
     uint32_t now = millis();
 
     // ── Периодический запрос дистанции ───────────────────────
@@ -279,10 +321,37 @@ void loop() {
         lastDist = now;
         g_seq++;
 
+#if defined(ROLE_ANCHOR1) && defined(PDOA_MODE)
+        // PDOA режим: BU04 сам шлёт JSON-данные, когда видит тег.
+        // Здесь читаем всё, что пришло от BU04 с момента прошлого цикла.
+        String pdoa;
+        uint32_t t0 = millis();
+        while (millis() - t0 < (POLL_INTERVAL_MS - 10)) {
+            while (bu04.available()) pdoa += (char)bu04.read();
+            if (pdoa.indexOf('\n') >= 0) break;
+            delay(5);
+        }
+        pdoa.trim();
+        if (pdoa.length() > 4) {
+            // Ожидаемый формат JSON от прошивки BU04 PDOA:
+            // {"dist":1.234,"angle":45.6,"addr":"XXXX"}
+            float dist  = -1.0f;
+            float angle = -999.0f;
+            int di = pdoa.indexOf("\"dist\":");
+            int ai = pdoa.indexOf("\"angle\":");
+            if (di >= 0) dist  = pdoa.substring(di + 7).toFloat();
+            if (ai >= 0) angle = pdoa.substring(ai + 8).toFloat();
+            if (dist > 0.0f) {
+                Serial.printf("PDOA,%u,%.3f,%.1f,%lu\n",
+                              g_seq, dist, angle, now);
+            }
+        }
+
+#else  // TWR режим (ANCHOR1, ANCHOR2, TAG)
         String resp = sendAT(AT_DISTANCE, 800);
         float  d    = parseDistance(resp);
 
-#if defined(ROLE_ANCHOR1)
+#  if defined(ROLE_ANCHOR1)
         if (d > 0.0f) {
             float avg = updateAvg(d);
             Serial.printf("ANCHOR1,%u,%.3f,%.3f,%lu\n",
@@ -293,7 +362,7 @@ void loop() {
             if (d2ok) {
                 float B   = BASELINE_M;
                 float d1  = d, d2 = g_d2_m;
-                // Триангуляция: TAG в координатах платформы
+                // Трилатерация: TAG в системе координат платформы
                 float x   = (d1*d1 - d2*d2 + B*B) / (2.0f * B);
                 float d2f = d1*d1 - x*x;
                 float y   = (d2f >= 0.0f) ? sqrtf(d2f) : 0.0f;
@@ -303,7 +372,7 @@ void loop() {
             }
         }
 
-#elif defined(ROLE_ANCHOR2)
+#  elif defined(ROLE_ANCHOR2)
         if (d > 0.0f) {
             Serial.printf("ANCHOR2,%u,%.3f,%lu\n", g_seq, d, now);
             // Отправляем дистанцию на ANCHOR1 через ESP-NOW
@@ -311,7 +380,7 @@ void loop() {
             esp_now_send(g_anchor1Mac, (uint8_t *)&pkt, sizeof(pkt));
         }
 
-#elif defined(ROLE_TAG)
+#  elif defined(ROLE_TAG)
         if (d > 0.0f) {
             float avg = updateAvg(d);
             Serial.printf("TAG,%u,%.3f,%.3f,%lu\n",
@@ -319,19 +388,8 @@ void loop() {
         } else {
             Serial.printf("TAG,%u,ERROR,%lu\n", g_seq, now);
         }
-#endif
-    }
+#  endif  // role
 
-    // ── Опрос акселерометра (только TAG) ─────────────────────
-#if defined(ROLE_TAG)
-    if (now - lastImu >= IMU_INTERVAL_MS) {
-        lastImu = now;
-        // AT+GETSENSOR доступен только через TTL-порт BU04
-        String imu = sendAT(AT_GETSENSOR, 600);
-        imu.trim();
-        if (imu.length() > 4 && imu.indexOf("ERROR") < 0) {
-            Serial.printf("IMU,%s,%lu\n", imu.c_str(), now);
-        }
+#endif  // TWR/PDOA
     }
-#endif
 }
