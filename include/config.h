@@ -90,7 +90,7 @@
 // Раздел 1: общие команды
 #define AT_TEST        "AT"              // проверка связи → OK
 #define AT_SAVE        "AT+SAVE"         // сохранить конфиг → OK + перезагрузка ~3 с
-#define AT_GETVER      "AT+GETVER"       // версия ПО → "getver software:V1.0.0,hardware:V1.0.0"
+#define AT_GETVER      "AT+GETVER"       // версия ПО и железа → "getver software:V1.0.0,hardware:V1.0.0"
 #define AT_RESTART     "AT+RESTART"      // перезагрузка
 #define AT_RESTORE     "AT+RESTORE"      // сброс к заводским настройкам
 // AT+GETCFG ответ в TWR-режиме:  "getcfg ID:X, Role:X, CH:X, Rate:X, Group:X"
@@ -115,7 +115,7 @@
 #define AT_DECA        "AT+DECA$"        // аутентификация PDOA
 #define AT_GETDLIST    "AT+GETDLIST"     // список обнаруженных тегов
 #define AT_GETKLIST    "AT+GETKLIST"     // список сопряжённых тегов
-// AT+ADDTAG=LongAddr64,ShortAddr,MinRate,MaxRate,Mode — добавить тег в пару
+// AT+ADDTAG=LongAddr64,ShortAddr,MinRate,MaxRate,Mode — добавить тег в пару (MaxRate макс. = 64)
 // AT+DELTAG=LongAddr64                                — удалить тег
 #define AT_PDOAOFF     "AT+PDOAOFF"      // коррекция угла (якорь)
 #define AT_RNGOFF      "AT+RNGOFF"       // коррекция расстояния (якорь)

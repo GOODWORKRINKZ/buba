@@ -43,7 +43,7 @@
  *   PLATFORM,seq,d1_m,d2_m,angle_deg,x_m,y_m,ts_ms
  *   TAG,seq,d_m,avg_m,ts_ms
  *  PDOA:
- *   PDOA,seq,dist_m,angle_deg,ts_ms
+ *   PDOA,addr_hex,seq,range_m,angle_deg,x_m,y_m,ts_ms
  */
 
 #include <Arduino.h>
@@ -253,7 +253,7 @@ void setup() {
     Serial.println("# ========================================");
 #if defined(PDOA_MODE)
     Serial.println("# BU04 UWB – ANCHOR1 (PDOA режим, 1 якорь)");
-    Serial.println("# CSV: PDOA,seq,dist_m,angle_deg,ts_ms");
+    Serial.println("# CSV: PDOA,addr_hex,seq,range_m,angle_deg,x_m,y_m,ts_ms");
 #else
     Serial.println("# BU04 UWB – ANCHOR1 (TWR режим, главный якорь)");
     Serial.println("# CSV ANCHOR1:  ANCHOR1,seq,d1_m,avg_m,ts_ms");
