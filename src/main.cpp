@@ -322,29 +322,70 @@ void loop() {
         g_seq++;
 
 #if defined(ROLE_ANCHOR1) && defined(PDOA_MODE)
-        // PDOA режим: BU04 сам шлёт JSON-данные, когда видит тег.
-        // Здесь читаем всё, что пришло от BU04 с момента прошлого цикла.
-        String pdoa;
-        uint32_t t0 = millis();
-        while (millis() - t0 < (POLL_INTERVAL_MS - 10)) {
-            while (bu04.available()) pdoa += (char)bu04.read();
-            if (pdoa.indexOf('\n') >= 0) break;
-            delay(5);
-        }
-        pdoa.trim();
-        if (pdoa.length() > 4) {
-            // Ожидаемый формат JSON от прошивки BU04 PDOA:
-            // {"dist":1.234,"angle":45.6,"addr":"XXXX"}
-            float dist  = -1.0f;
-            float angle = -999.0f;
-            int di = pdoa.indexOf("\"dist\":");
-            int ai = pdoa.indexOf("\"angle\":");
-            if (di >= 0) dist  = pdoa.substring(di + 7).toFloat();
-            if (ai >= 0) angle = pdoa.substring(ai + 8).toFloat();
-            if (dist > 0.0f) {
-                Serial.printf("PDOA,%u,%.3f,%.1f,%lu\n",
-                              g_seq, dist, angle, now);
+        // PDOA режим: BU04 непрерывно шлёт строки с данными, когда видит
+        // зарегистрированный тег.
+        //
+        // Реальный формат (из официального GUI Ai_Thinker_PDOA_V1_0_1):
+        //   Tag_Addr:XXXX, Seq:N, Xcm:X.XX, Ycm:X.XX, Range:X.XX, Angle:N
+        //   Tag_Addr — короткий адрес тега (16-бит hex)
+        //   Xcm/Ycm — позиция тега в см в системе координат якоря
+        //   Range   — дистанция в см (округлённо)
+        //   Angle   — угол в градусах (целое)
+        //
+        // Читаем всё, что накопилось в буфере UART за период POLL_INTERVAL_MS.
+        // Одна строка = одно измерение. Если строк несколько — берём последнюю.
+        String lastLine;
+        {
+            String buf;
+            uint32_t t0 = millis();
+            while (millis() - t0 < (POLL_INTERVAL_MS - 10)) {
+                while (bu04.available()) {
+                    char c = (char)bu04.read();
+                    if (c == '\n') {
+                        buf.trim();
+                        if (buf.startsWith("Tag_Addr:")) lastLine = buf;
+                        buf = "";
+                    } else {
+                        buf += c;
+                    }
+                }
+                if (lastLine.length() > 0 && !bu04.available()) break;
+                delay(2);
             }
+        }
+        if (lastLine.length() > 0) {
+            // Парсим: Tag_Addr:XXXX, Seq:N, Xcm:V, Ycm:V, Range:V, Angle:V
+            uint32_t addr  = 0;
+            int      seq   = 0;
+            float    xcm   = 0, ycm = 0, range = 0;
+            int      angle = 0;
+            // sscanf не доступен надёжно на Arduino; парсим вручную через indexOf
+            auto fieldVal = [&](const char *key) -> String {
+                int i = lastLine.indexOf(key);
+                if (i < 0) return "";
+                i += strlen(key);
+                int j = lastLine.indexOf(',', i);
+                return (j >= 0) ? lastLine.substring(i, j) : lastLine.substring(i);
+            };
+            String sAddr  = fieldVal("Tag_Addr:");
+            String sSeq   = fieldVal("Seq:");
+            String sXcm   = fieldVal("Xcm:");
+            String sYcm   = fieldVal("Ycm:");
+            String sRange = fieldVal("Range:");
+            String sAngle = fieldVal("Angle:");
+            if (sAddr.length())  addr  = (uint32_t)strtoul(sAddr.c_str(), nullptr, 16);
+            if (sSeq.length())   seq   = sSeq.toInt();
+            if (sXcm.length())   xcm   = sXcm.toFloat();
+            if (sYcm.length())   ycm   = sYcm.toFloat();
+            if (sRange.length()) range = sRange.toFloat();
+            if (sAngle.length()) angle = sAngle.toInt();
+            // Вывод CSV: PDOA,addr_hex,seq,range_m,angle_deg,x_m,y_m,ts_ms
+            Serial.printf("PDOA,%04X,%d,%.2f,%d,%.2f,%.2f,%lu\n",
+                          addr, seq,
+                          range / 100.0f, angle,
+                          xcm  / 100.0f,
+                          ycm  / 100.0f,
+                          now);
         }
 
 #else  // TWR режим (ANCHOR1, ANCHOR2, TAG)

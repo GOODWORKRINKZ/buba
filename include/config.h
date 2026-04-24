@@ -90,10 +90,12 @@
 // Раздел 1: общие команды
 #define AT_TEST        "AT"              // проверка связи → OK
 #define AT_SAVE        "AT+SAVE"         // сохранить конфиг → OK + перезагрузка ~3 с
-#define AT_GETVER      "AT+GETVER"       // версия ПО → "getver software:V1.0.0"
+#define AT_GETVER      "AT+GETVER"       // версия ПО → "getver software:V1.0.0,hardware:V1.0.0"
 #define AT_RESTART     "AT+RESTART"      // перезагрузка
 #define AT_RESTORE     "AT+RESTORE"      // сброс к заводским настройкам
-#define AT_GETCFG      "AT+GETCFG"       // конфиг → "getcfg ID:X, Role:X, CH:X, Rate:X, Group:X"
+// AT+GETCFG ответ в TWR-режиме:  "getcfg ID:X, Role:X, CH:X, Rate:X, Group:X"
+// AT+GETCFG ответ в PDOA-режиме: "getcfg Dlist:N KList:N Net:XXXX AncID:N Rate:N Filter:N UserCmd:N pdoaOffset:N rngOffset:N"
+#define AT_GETCFG      "AT+GETCFG"
 // AT+SETCFG=ID,Role,CH,1,Group  — формируется в configureBU04()
 
 // Раздел 2: измерения (TWR)
