@@ -139,7 +139,29 @@ static float updateAvg(float v) {
 // Источник: BU03/BU04 AT指令 V1.0.6, раздел 1
 // Rate всегда 1 (6.8 Мбит/с — единственный поддерживаемый вариант).
 // Group: якоря настраивают в свою группу; теги оставляют 0.
+// Важно: AT+SETCFG работает только в TWR-режиме (mode=0). Если BU04 находится
+// в PDOA-режиме (mode=1), сначала переключаем обратно в TWR, иначе команда
+// вернёт только эхо без OK.
 static void configureBU04(uint8_t id, uint8_t role) {
+    // Убеждаемся, что BU04 в TWR-режиме перед AT+SETCFG
+    {
+        String mode = sendAT(AT_GETUWBMODE, 600);
+        bool validResponse = (mode.indexOf("getuwbmode") >= 0) && (mode.indexOf("OK") >= 0);
+        bool inPdoaMode    = validResponse && (mode.indexOf("getuwbmode:1") >= 0);
+        if (inPdoaMode) {
+            Serial.println("# BU04 в PDOA-режиме — переключаем в TWR…");
+            String r = sendAT(AT_SETUWBMODE_TWR, 1000);
+            if (r.indexOf("OK") >= 0) {
+                bu04.println(AT_SAVE);
+                delay(3500);
+                flushBU04();
+                Serial.println("# BU04 переключён в TWR-режим");
+            } else {
+                Serial.println("# Ошибка переключения в TWR: " + r);
+            }
+        }
+    }
+
     uint8_t group = (role == 1) ? BU04_GROUP : 0;
     Serial.printf("# Настройка BU04: id=%u role=%u ch=%u rate=%u group=%u\n",
                   id, role, BU04_CHANNEL, BU04_RATE, group);
@@ -270,7 +292,7 @@ void setup() {
         String mode = sendAT(AT_GETUWBMODE, 600);
         // Валидный ответ содержит "getuwbmode" и "OK"; простое эхо команды — не ответ
         bool validResponse  = (mode.indexOf("getuwbmode") >= 0) && (mode.indexOf("OK") >= 0);
-        bool alreadyInPdoaMode = validResponse && (mode.indexOf('1') >= 0);
+        bool alreadyInPdoaMode = validResponse && (mode.indexOf("getuwbmode:1") >= 0);
         if (alreadyInPdoaMode) {
             Serial.println("# BU04 уже в режиме PDOA");
         } else {
