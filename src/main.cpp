@@ -139,11 +139,16 @@ static float updateAvg(float v) {
 // Поддерживает оба формата: "getuwbmode:1" и "getuwbmode: 1".
 // Возвращает 0 (TWR), 1 (PDOA), или -1 если не удалось распознать.
 static int parseUwbMode(const String &resp) {
-    int idx = resp.indexOf("getuwbmode");
+    static const char kKey[] = "getuwbmode";
+    int idx = resp.indexOf(kKey);
     if (idx < 0 || resp.indexOf("OK") < 0) return -1;
-    int i = idx + 10;  // пропускаем "getuwbmode"
-    while (i < (int)resp.length() && (resp[i] == ':' || resp[i] == ' ')) i++;
-    if (i < (int)resp.length() && isdigit((uint8_t)resp[i])) return resp[i] - '0';
+    int i = idx + (int)strlen(kKey);
+    while (i < (int)resp.length() && (resp[i] == ':' || isspace((uint8_t)resp[i]))) i++;
+    if (i < (int)resp.length() && isdigit((uint8_t)resp[i])) {
+        int val = 0;
+        while (i < (int)resp.length() && isdigit((uint8_t)resp[i])) val = val * 10 + (resp[i++] - '0');
+        return val;
+    }
     return -1;
 }
 
