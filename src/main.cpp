@@ -71,6 +71,11 @@ static float    g_avgBuf[MOVING_AVG_SAMPLES] = {};
 static uint8_t  g_avgIdx  = 0;
 static bool     g_avgFull = false;
 
+// true, если зафиксирована ошибка инициализации DW3000 внутри BU04
+// ("INIT FAILED"). После этого все AT-команды бесполезны до устранения
+// аппаратной причины — повторные попытки настройки только тратят время.
+static bool     g_bu04Dead = false;
+
 // ── ANCHOR1: данные от ANCHOR2 ───────────────────────────────
 #if defined(ROLE_ANCHOR1)
 static float    g_d2_m    = -1.0f;
@@ -83,6 +88,41 @@ static uint32_t g_d2_age  = 0;     // millis() момента получения
 
 static void flushBU04() {
     while (bu04.available()) bu04.read();
+}
+
+// Распознаёт строку "INIT FAILED" — это runtime-ошибка прошивки BU04
+// при инициализации DW3000 по SPI ВНУТРИ модуля. Документация AT-команд
+// (BU03/BU04 V1.0.6) такую строку не описывает; стандартные ответы только
+// "OK" и "ERR". Если BU04 шлёт "INIT FAILED" в ответ на любую команду —
+// значит DW3000 внутри модуля не инициализируется. Это аппаратная проблема:
+//   • питание 3V3 не выдерживает пик 500 мА (USB ESP32-C3 SuperMini обычно
+//     ограничен ~250 мА — нужен внешний LDO/преобразователь);
+//   • плохая пайка между STM32 и DW3000 внутри модуля;
+//   • повреждённый чип DW3000.
+// Никакая комбинация AT-команд этого не лечит. Поэтому при получении
+// "INIT FAILED" мы сразу выводим диагностическое сообщение и не тратим
+// время на бесполезные ретраи AT+RESTORE/AT+RESTART/AT+SETCFG.
+static bool isInitFailed(const String &resp) {
+    return resp.indexOf("INIT FAILED") >= 0;
+}
+
+// Печатает один раз подробное диагностическое сообщение об аппаратной
+// неисправности модуля и взводит флаг g_bu04Dead.
+static void reportInitFailedHardware(const String &resp) {
+    if (g_bu04Dead) return;
+    g_bu04Dead = true;
+    Serial.println("# ============================================");
+    Serial.println("# АППАРАТНАЯ ОШИБКА: BU04 вернул 'INIT FAILED'");
+    Serial.println("# DW3000 внутри модуля не инициализируется.");
+    Serial.println("# Это НЕ лечится AT-командами. Проверьте:");
+    Serial.println("#  1) Питание 3V3 — пик ≥ 500 мА. USB ESP32-C3");
+    Serial.println("#     SuperMini обычно даёт ~250 мА, нужен");
+    Serial.println("#     внешний 3V3 LDO/DC-DC ≥ 500 мА.");
+    Serial.println("#  2) Пайка модуля BU04 (особенно VDD1/3V3/GND).");
+    Serial.println("#  3) Целостность чипа DW3000 (был ли перегрев,");
+    Serial.println("#     ESD, обратная полярность).");
+    Serial.println("# Ответ модуля: " + resp);
+    Serial.println("# ============================================");
 }
 
 // Отправить AT-команду, вернуть ответ. Ждём "OK"/"ERR" или таймаут.
@@ -105,12 +145,18 @@ static String sendAT(const String &cmd, uint32_t timeoutMs = 1000) {
 // После задержки начинаем посылать AT-пинг каждые 300 мс до timeoutMs;
 // возвращаемся при первом "OK". Без этого первые AT+DISTANCE могут упасть
 // с ERROR, пока DW3000 ещё инициализируется.
+// Если модуль начинает отвечать "INIT FAILED" — выходим сразу с
+// аппаратным диагностическим сообщением: дальнейшее ожидание бесполезно.
 static void waitBU04Ready(uint32_t timeoutMs = 8000) {
     flushBU04();
     uint32_t t0 = millis();
     while (millis() - t0 < timeoutMs) {
         String r = sendAT(AT_TEST, 400);
         if (r.indexOf("OK") >= 0) return;
+        if (isInitFailed(r)) {
+            reportInitFailedHardware(r);
+            return;
+        }
         delay(300);
     }
     Serial.println("# Предупреждение: BU04 не ответил после перезагрузки");
@@ -176,6 +222,13 @@ static int parseUwbMode(const String &resp) {
 // в PDOA-режиме (mode=1), сначала переключаем обратно в TWR, иначе команда
 // вернёт только эхо без OK.
 static void configureBU04(uint8_t id, uint8_t role) {
+    // Если уже зафиксирована аппаратная ошибка инициализации DW3000 —
+    // не тратим время на бесполезные ретраи AT-команд.
+    if (g_bu04Dead) {
+        Serial.println("# Пропуск настройки BU04: модуль не инициализирован (см. выше).");
+        return;
+    }
+
     // Убеждаемся, что BU04 в TWR-режиме перед AT+SETCFG.
     // Переключаем если режим PDOA (1) ИЛИ неизвестен (-1):
     //   - PDOA: AT+SETCFG не поддерживается, вернёт ERR
@@ -184,16 +237,26 @@ static void configureBU04(uint8_t id, uint8_t role) {
     //           не определён → на всякий случай переключаем в TWR
     {
         String modeResp = sendAT(AT_GETUWBMODE, 600);
+        // Если внутренняя ошибка DW3000 — выходим сразу, ретраи не помогут.
+        if (isInitFailed(modeResp)) {
+            reportInitFailedHardware(modeResp);
+            return;
+        }
         int    uwbMode  = parseUwbMode(modeResp);
         if (uwbMode != 0) {
             Serial.println(uwbMode == 1
                 ? "# BU04 в PDOA-режиме — переключаем в TWR…"
                 : "# BU04: режим неизвестен — принудительно ставим TWR…");
             String r = sendAT(AT_SETUWBMODE_TWR, 1000);
+            if (isInitFailed(r)) {
+                reportInitFailedHardware(r);
+                return;
+            }
             if (r.indexOf("OK") >= 0) {
                 bu04.println(AT_SAVE);
                 delay(2000);
                 waitBU04Ready();
+                if (g_bu04Dead) return;
                 Serial.println("# BU04 переключён в TWR-режим");
             } else {
                 Serial.println("# Предупреждение: ошибка переключения TWR: " + r);
@@ -231,17 +294,32 @@ static void configureBU04(uint8_t id, uint8_t role) {
 
     String resp = trySETCFG();
 
+    // Если ответ — внутренняя ошибка DW3000, дальнейшие попытки бесполезны.
+    if (isInitFailed(resp)) {
+        reportInitFailedHardware(resp);
+        return;
+    }
+
     // Если SETCFG вернул ERR, пробуем ещё раз принудительно переключить
     // в TWR и повторить — на случай если первый AT+GETUWBMODE не уловил PDOA
     if (resp.indexOf("ERR") >= 0) {
         Serial.println("# SETCFG вернул ERR — принудительно переключаем TWR и повторяем…");
         String r = sendAT(AT_SETUWBMODE_TWR, 1000);
+        if (isInitFailed(r)) {
+            reportInitFailedHardware(r);
+            return;
+        }
         if (r.indexOf("OK") >= 0) {
             bu04.println(AT_SAVE);
             delay(2000);
             waitBU04Ready();
+            if (g_bu04Dead) return;
         }
         resp = trySETCFG();
+        if (isInitFailed(resp)) {
+            reportInitFailedHardware(resp);
+            return;
+        }
     }
 
     if (resp.indexOf("OK") >= 0) {
@@ -249,6 +327,7 @@ static void configureBU04(uint8_t id, uint8_t role) {
         bu04.println(AT_SAVE);
         delay(2000);
         waitBU04Ready();
+        if (g_bu04Dead) return;
         Serial.println("# BU04 готов");
         return;
     }
@@ -257,6 +336,10 @@ static void configureBU04(uint8_t id, uint8_t role) {
     // Читаем текущую конфигурацию для диагностики (например, ID=65535 = заводской сброс).
     {
         String cfg = sendAT(AT_GETCFG, 1000);
+        if (isInitFailed(cfg)) {
+            reportInitFailedHardware(cfg);
+            return;
+        }
         Serial.println("# Текущий конфиг BU04: " + cfg);
     }
 
@@ -270,19 +353,29 @@ static void configureBU04(uint8_t id, uint8_t role) {
     // Ждём готовности активно (до 12 с): после RESTORE+RESTART DW3000
     // инициализируется заново — фиксированного delay(5000) может не хватить.
     waitBU04Ready(12000);
+    if (g_bu04Dead) return;
 
     // После перезагрузки проверяем режим и при необходимости переключаем в TWR
     {
         String modeResp = sendAT(AT_GETUWBMODE, 600);
+        if (isInitFailed(modeResp)) {
+            reportInitFailedHardware(modeResp);
+            return;
+        }
         int    uwbMode  = parseUwbMode(modeResp);
         Serial.printf("# Режим после RESTORE+RESTART: %d\n", uwbMode);
         if (uwbMode != 0) {
             Serial.println("# Переключаем в TWR после RESTORE…");
             String r = sendAT(AT_SETUWBMODE_TWR, 1000);
+            if (isInitFailed(r)) {
+                reportInitFailedHardware(r);
+                return;
+            }
             if (r.indexOf("OK") >= 0) {
                 bu04.println(AT_SAVE);
                 delay(2000);
                 waitBU04Ready();
+                if (g_bu04Dead) return;
                 Serial.println("# TWR применён");
             } else {
                 Serial.println("# Предупреждение: не удалось переключить TWR после RESTORE: " + r);
@@ -292,11 +385,16 @@ static void configureBU04(uint8_t id, uint8_t role) {
 
     Serial.println("# SETCFG после RESTORE+RESTART…");
     resp = trySETCFG();
+    if (isInitFailed(resp)) {
+        reportInitFailedHardware(resp);
+        return;
+    }
     if (resp.indexOf("OK") >= 0) {
         Serial.println("# Сохранение, BU04 перезагружается (~3 с)…");
         bu04.println(AT_SAVE);
         delay(2000);
         waitBU04Ready();
+        if (g_bu04Dead) return;
         Serial.println("# BU04 готов (после RESTORE+RESTART)");
     } else {
         Serial.println("# Ошибка настройки даже после RESTORE+RESTART: " + resp);
@@ -413,31 +511,41 @@ void setup() {
     // а затем переключаем в PDOA.
     {
         String modeResp = sendAT(AT_GETUWBMODE, 600);
-        int uwbMode = parseUwbMode(modeResp);
-        if (uwbMode == 1) {
-            Serial.println("# BU04 уже в режиме PDOA");
+        if (isInitFailed(modeResp)) {
+            reportInitFailedHardware(modeResp);
         } else {
-            Serial.println(uwbMode == 0
-                ? "# BU04 в TWR-режиме — настраиваем базовую конфигурацию и переключаем в PDOA…"
-                : "# BU04: режим неизвестен — настраиваем в TWR, затем PDOA…");
-            // Базовая TWR-конфигурация обязательна перед AT+SETUWBMODE=1
-            configureBU04(BU04_ID_ANCHOR1, /*role=*/1);
-            // Переключаем в PDOA
-            String r = sendAT(AT_SETUWBMODE_PDOA, 2000);
-            if (r.indexOf("OK") >= 0) {
-                bu04.println(AT_SAVE);
-                delay(2000);
-                waitBU04Ready();
-                Serial.println("# PDOA включён");
+            int uwbMode = parseUwbMode(modeResp);
+            if (uwbMode == 1) {
+                Serial.println("# BU04 уже в режиме PDOA");
             } else {
-                Serial.println("# Ошибка переключения PDOA: " + r);
-                Serial.println("# Проверьте UART (PA2/PA3 или PA9/PA10) и питание 500 мА");
+                Serial.println(uwbMode == 0
+                    ? "# BU04 в TWR-режиме — настраиваем базовую конфигурацию и переключаем в PDOA…"
+                    : "# BU04: режим неизвестен — настраиваем в TWR, затем PDOA…");
+                // Базовая TWR-конфигурация обязательна перед AT+SETUWBMODE=1
+                configureBU04(BU04_ID_ANCHOR1, /*role=*/1);
+                if (!g_bu04Dead) {
+                    // Переключаем в PDOA
+                    String r = sendAT(AT_SETUWBMODE_PDOA, 2000);
+                    if (isInitFailed(r)) {
+                        reportInitFailedHardware(r);
+                    } else if (r.indexOf("OK") >= 0) {
+                        bu04.println(AT_SAVE);
+                        delay(2000);
+                        waitBU04Ready();
+                        if (!g_bu04Dead) Serial.println("# PDOA включён");
+                    } else {
+                        Serial.println("# Ошибка переключения PDOA: " + r);
+                        Serial.println("# Проверьте UART (PA2/PA3 или PA9/PA10) и питание 500 мА");
+                    }
+                }
             }
         }
-        // Устанавливаем JSON-вывод
-        sendAT(AT_USER_CMD_JSON, 500);
-        Serial.println("# Формат вывода: JSON");
-        Serial.println("# Добавьте тег: AT+ADDTAG=<LongAddr64>,<ShortAddr>,1,64,0");
+        if (!g_bu04Dead) {
+            // Устанавливаем JSON-вывод
+            sendAT(AT_USER_CMD_JSON, 500);
+            Serial.println("# Формат вывода: JSON");
+            Serial.println("# Добавьте тег: AT+ADDTAG=<LongAddr64>,<ShortAddr>,1,64,0");
+        }
     }
 #else
     configureBU04(BU04_ID_ANCHOR1, /*role=*/1);
@@ -473,6 +581,17 @@ void loop() {
     uint32_t now = millis();
 
     // ── Периодический запрос дистанции ───────────────────────
+    // Если BU04 неисправен (DW3000 init failed) — не штурмуем UART
+    // и не флудим Serial: печатаем health-ping раз в 5 секунд.
+    if (g_bu04Dead) {
+        static uint32_t lastHealth = 0;
+        if (now - lastHealth >= 5000) {
+            lastHealth = now;
+            Serial.printf("# BU04 не инициализирован (INIT FAILED). uptime=%lu ms\n", now);
+        }
+        return;
+    }
+
     if (now - lastDist >= POLL_INTERVAL_MS) {
         lastDist = now;
         g_seq++;
@@ -546,6 +665,12 @@ void loop() {
 
 #else  // TWR режим (ANCHOR1, ANCHOR2, TAG)
         String resp = sendAT(AT_DISTANCE, 800);
+        // Если модуль перешёл в состояние INIT FAILED во время работы —
+        // фиксируем это и переключаемся в режим throttled health-ping.
+        if (isInitFailed(resp)) {
+            reportInitFailedHardware(resp);
+            return;
+        }
         float  d    = parseDistance(resp);
 
 #  if defined(ROLE_ANCHOR1)
