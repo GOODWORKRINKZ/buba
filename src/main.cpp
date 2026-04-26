@@ -85,7 +85,8 @@ static void flushBU04() {
     while (bu04.available()) bu04.read();
 }
 
-// Отправить AT-команду, вернуть ответ. Ждём "OK"/"ERROR" или таймаут.
+// Отправить AT-команду, вернуть ответ. Ждём "OK"/"ERR" или таймаут.
+// Протокол BU04: успех → "OK", ошибка → "ERR" (не "ERROR").
 static String sendAT(const String &cmd, uint32_t timeoutMs = 1000) {
     flushBU04();
     bu04.println(cmd);
@@ -93,8 +94,8 @@ static String sendAT(const String &cmd, uint32_t timeoutMs = 1000) {
     uint32_t t0 = millis();
     while (millis() - t0 < timeoutMs) {
         while (bu04.available()) resp += (char)bu04.read();
-        if (resp.indexOf("OK")    >= 0) break;
-        if (resp.indexOf("ERROR") >= 0) break;
+        if (resp.indexOf("OK")  >= 0) break;
+        if (resp.indexOf("ERR") >= 0) break;  // покрывает и "ERR" и "ERROR"
         delay(10);
     }
     return resp;
@@ -160,12 +161,19 @@ static int parseUwbMode(const String &resp) {
 // в PDOA-режиме (mode=1), сначала переключаем обратно в TWR, иначе команда
 // вернёт только эхо без OK.
 static void configureBU04(uint8_t id, uint8_t role) {
-    // Убеждаемся, что BU04 в TWR-режиме перед AT+SETCFG
+    // Убеждаемся, что BU04 в TWR-режиме перед AT+SETCFG.
+    // Переключаем если режим PDOA (1) ИЛИ неизвестен (-1):
+    //   - PDOA: AT+SETCFG не поддерживается, вернёт ERR
+    //   - -1:   BU04 может активно слать PDOA-данные и "OK" мог
+    //           сработать раньше ответа на AT+GETUWBMODE → режим
+    //           не определён → на всякий случай переключаем в TWR
     {
-        String mode = sendAT(AT_GETUWBMODE, 600);
-        bool inPdoaMode = (parseUwbMode(mode) == 1);
-        if (inPdoaMode) {
-            Serial.println("# BU04 в PDOA-режиме — переключаем в TWR…");
+        String modeResp = sendAT(AT_GETUWBMODE, 600);
+        int    uwbMode  = parseUwbMode(modeResp);
+        if (uwbMode != 0) {
+            Serial.println(uwbMode == 1
+                ? "# BU04 в PDOA-режиме — переключаем в TWR…"
+                : "# BU04: режим неизвестен — принудительно ставим TWR…");
             String r = sendAT(AT_SETUWBMODE_TWR, 1000);
             if (r.indexOf("OK") >= 0) {
                 bu04.println(AT_SAVE);
@@ -173,7 +181,7 @@ static void configureBU04(uint8_t id, uint8_t role) {
                 flushBU04();
                 Serial.println("# BU04 переключён в TWR-режим");
             } else {
-                Serial.println("# Ошибка переключения в TWR: " + r);
+                Serial.println("# Предупреждение: ошибка переключения TWR: " + r);
             }
         }
     }
@@ -187,6 +195,20 @@ static void configureBU04(uint8_t id, uint8_t role) {
                                + String(BU04_RATE)    + ","
                                + String(group);
     String resp = sendAT(cmd, 1500);
+
+    // Если SETCFG вернул ERR, пробуем ещё раз принудительно переключить
+    // в TWR и повторить — на случай если первый AT+GETUWBMODE не уловил PDOA
+    if (resp.indexOf("OK") < 0 && resp.indexOf("ERR") >= 0) {
+        Serial.println("# SETCFG вернул ERR — принудительно переключаем TWR и повторяем…");
+        String r = sendAT(AT_SETUWBMODE_TWR, 1000);
+        if (r.indexOf("OK") >= 0) {
+            bu04.println(AT_SAVE);
+            delay(3500);
+            flushBU04();
+        }
+        resp = sendAT(cmd, 1500);
+    }
+
     if (resp.indexOf("OK") >= 0) {
         Serial.println("# Сохранение, BU04 перезагружается (~3 с)…");
         bu04.println(AT_SAVE);
@@ -195,7 +217,10 @@ static void configureBU04(uint8_t id, uint8_t role) {
         Serial.println("# BU04 готов");
     } else {
         Serial.println("# Ошибка настройки: " + resp);
-        Serial.println("# Попробуйте другой UART (PA9/PA10) или проверьте питание 500 мА");
+        // Читаем текущую конфигурацию для диагностики
+        String cfg = sendAT(AT_GETCFG, 1000);
+        Serial.println("# Текущий конфиг BU04: " + cfg);
+        Serial.println("# Попробуйте AT+RESTORE для сброса к заводским настройкам");
     }
 }
 
