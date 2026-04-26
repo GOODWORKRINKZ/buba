@@ -85,21 +85,6 @@ static void flushBU04() {
     while (bu04.available()) bu04.read();
 }
 
-// Ожидаем готовности BU04 после перезагрузки (AT+SAVE → STM32 рестарт).
-// После задержки начинаем посылать AT-пинг каждые 300 мс до timeoutMs;
-// возвращаемся при первом "OK". Без этого первые AT+DISTANCE могут упасть
-// с ERROR, пока DW3000 ещё инициализируется.
-static void waitBU04Ready(uint32_t timeoutMs = 8000) {
-    flushBU04();
-    uint32_t t0 = millis();
-    while (millis() - t0 < timeoutMs) {
-        String r = sendAT(AT_TEST, 400);
-        if (r.indexOf("OK") >= 0) return;
-        delay(300);
-    }
-    Serial.println("# Предупреждение: BU04 не ответил после перезагрузки");
-}
-
 // Отправить AT-команду, вернуть ответ. Ждём "OK"/"ERR" или таймаут.
 // Протокол BU04: успех → "OK", ошибка → "ERR".
 static String sendAT(const String &cmd, uint32_t timeoutMs = 1000) {
@@ -114,6 +99,21 @@ static String sendAT(const String &cmd, uint32_t timeoutMs = 1000) {
         delay(10);
     }
     return resp;
+}
+
+// Ожидаем готовности BU04 после перезагрузки (AT+SAVE → STM32 рестарт).
+// После задержки начинаем посылать AT-пинг каждые 300 мс до timeoutMs;
+// возвращаемся при первом "OK". Без этого первые AT+DISTANCE могут упасть
+// с ERROR, пока DW3000 ещё инициализируется.
+static void waitBU04Ready(uint32_t timeoutMs = 8000) {
+    flushBU04();
+    uint32_t t0 = millis();
+    while (millis() - t0 < timeoutMs) {
+        String r = sendAT(AT_TEST, 400);
+        if (r.indexOf("OK") >= 0) return;
+        delay(300);
+    }
+    Serial.println("# Предупреждение: BU04 не ответил после перезагрузки");
 }
 
 // Парсит первое значение distance из ответа AT+DISTANCE.
