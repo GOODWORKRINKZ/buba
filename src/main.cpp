@@ -267,8 +267,9 @@ static void configureBU04(uint8_t id, uint8_t role) {
     Serial.println("# Выполняем AT+RESTORE + AT+RESTART…");
     sendAT(AT_RESTORE, 1500);
     sendAT(AT_RESTART, 1500);
-    delay(5000);
-    flushBU04();
+    // Ждём готовности активно (до 12 с): после RESTORE+RESTART DW3000
+    // инициализируется заново — фиксированного delay(5000) может не хватить.
+    waitBU04Ready(12000);
 
     // После перезагрузки проверяем режим и при необходимости переключаем в TWR
     {
@@ -388,8 +389,9 @@ void setup() {
 
     // Запускаем UART к BU04 (USART2: PA2=TX→GPIO3, PA3=RX←GPIO2)
     bu04.begin(BU04_BAUD, SERIAL_8N1, PIN_BU04_RX, PIN_BU04_TX);
-    delay(2000);    // ждём загрузку STM32 в BU04
-    flushBU04();
+    // Активно ждём готовности BU04 (до 10 с): DW3000 инициализируется
+    // медленнее чем STM32 — фиксированный delay(2000) недостаточен.
+    waitBU04Ready(10000);
 
 #if defined(ROLE_ANCHOR1)
     Serial.println("# ========================================");
