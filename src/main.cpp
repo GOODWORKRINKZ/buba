@@ -90,37 +90,59 @@ static void flushBU04() {
     while (bu04.available()) bu04.read();
 }
 
-// Распознаёт строку "INIT FAILED" — это runtime-ошибка прошивки BU04
-// при инициализации DW3000 по SPI ВНУТРИ модуля. Документация AT-команд
-// (BU03/BU04 V1.0.6) такую строку не описывает; стандартные ответы только
-// "OK" и "ERR". Если BU04 шлёт "INIT FAILED" в ответ на любую команду —
-// значит DW3000 внутри модуля не инициализируется. Это аппаратная проблема:
-//   • питание 3V3 не выдерживает пик 500 мА (USB ESP32-C3 SuperMini обычно
-//     ограничен ~250 мА — нужен внешний LDO/преобразователь);
-//   • плохая пайка между STM32 и DW3000 внутри модуля;
-//   • повреждённый чип DW3000.
-// Никакая комбинация AT-команд этого не лечит. Поэтому при получении
-// "INIT FAILED" мы сразу выводим диагностическое сообщение и не тратим
-// время на бесполезные ретраи AT+RESTORE/AT+RESTART/AT+SETCFG.
+// Распознаёт строку "INIT FAILED" — ВАЖНО: эта строка приходит НЕ от
+// AT-прошивки. AT-прошивка по протоколу BU03/BU04 V1.0.6 отвечает только
+// "OK" или "ERR". Строка "INIT FAILED     " (именно с трейлинг-пробелами)
+// печатается из примеров Decawave SDK Ai-Thinker-Open/STM32F103-BU0x_SDK
+// (см. ex_01a_simple_tx, ex_05c_ds_twr_init_sts_sdc и др.):
+//
+//   if (dwt_initialise(DWT_DW_INIT) == DWT_ERROR) {
+//       _dbg_printf((unsigned char *)"INIT FAILED     ");
+//       while (1) { };
+//   }
+//
+// Если BU04 непрерывно шлёт эту строку, значит на нём прошита НЕ
+// AT-прошивка, а демо-пример из SDK, у которого нет AT-парсера. Решение —
+// перепрошить модуль готовым HEX-файлом AT-прошивки, лежащим в корне
+// репозитория: «(2717)BU03_BU04-AT-通用-常规固件V1.0.0_T2024-07-26.hex».
+// Подробности и инструкция — в README.md.
+//
+// Также возможно (но реже) что AT-прошивка стоит, но DW3000 действительно
+// не инициализируется по аппаратной причине (питание, пайка, повреждённый
+// чип) — тогда AT-парсер тоже может не запуститься.
 static bool isInitFailed(const String &resp) {
     return resp.indexOf("INIT FAILED") >= 0;
 }
 
-// Печатает один раз подробное диагностическое сообщение об аппаратной
-// неисправности модуля и взводит флаг g_bu04Dead.
+// Печатает один раз подробное диагностическое сообщение и взводит
+// флаг g_bu04Dead.
 static void reportInitFailedHardware(const String &resp) {
     if (g_bu04Dead) return;
     g_bu04Dead = true;
     Serial.println("# ============================================");
-    Serial.println("# АППАРАТНАЯ ОШИБКА: BU04 вернул 'INIT FAILED'");
-    Serial.println("# DW3000 внутри модуля не инициализируется.");
-    Serial.println("# Это НЕ лечится AT-командами. Проверьте:");
-    Serial.println("#  1) Питание 3V3 — пик ≥ 500 мА. USB ESP32-C3");
-    Serial.println("#     SuperMini обычно даёт ~250 мА, нужен");
-    Serial.println("#     внешний 3V3 LDO/DC-DC ≥ 500 мА.");
-    Serial.println("#  2) Пайка модуля BU04 (особенно VDD1/3V3/GND).");
-    Serial.println("#  3) Целостность чипа DW3000 (был ли перегрев,");
-    Serial.println("#     ESD, обратная полярность).");
+    Serial.println("# ОШИБКА: BU04 шлёт 'INIT FAILED' (не ответ AT!)");
+    Serial.println("# ");
+    Serial.println("# Эту строку печатают примеры Decawave SDK");
+    Serial.println("# (ex_01a_simple_tx, ex_05c_ds_twr_*, ...) когда");
+    Serial.println("# dwt_initialise() возвращает DWT_ERROR. AT-прошивка");
+    Serial.println("# такую строку НЕ выводит — она отвечает OK/ERR.");
+    Serial.println("# ");
+    Serial.println("# Самая вероятная причина: на BU04 прошита НЕ AT-,");
+    Serial.println("# а демо-прошивка из SDK. Решение — прошить файл");
+    Serial.println("# из корня репо:");
+    Serial.println("#   (2717)BU03_BU04-AT-通用-常规固件V1.0.0_*.hex");
+    Serial.println("# Способы прошивки:");
+    Serial.println("#  • UART: BOOT0=HIGH, RESET, отпустить BOOT0,");
+    Serial.println("#    залить HEX утилитой Ai-Thinker UART.");
+    Serial.println("#  • SWD: ST-Link/DAPLink на пинах SWDIO(30)/SWCLK(31).");
+    Serial.println("# ");
+    Serial.println("# Если перепрошивка не помогает — проверьте:");
+    Serial.println("#  1) Питание 3V3 — пик ≥ 500 мА (USB ESP32-C3");
+    Serial.println("#     SuperMini обычно даёт ~250 мА → нужен внешний");
+    Serial.println("#     LDO/DC-DC).");
+    Serial.println("#  2) Пайка модуля (VDD1/3V3/GND).");
+    Serial.println("#  3) Целостность чипа DW3000.");
+    Serial.println("# ");
     Serial.println("# Ответ модуля: " + resp);
     Serial.println("# ============================================");
 }
@@ -587,7 +609,8 @@ void loop() {
         static uint32_t lastHealth = 0;
         if (now - lastHealth >= 5000) {
             lastHealth = now;
-            Serial.printf("# BU04 не инициализирован (INIT FAILED). uptime=%lu ms\n", now);
+            Serial.printf("# BU04 шлёт 'INIT FAILED' (не AT-прошивка). "
+                          "uptime=%lu ms. Прошейте AT-HEX из корня репо.\n", now);
         }
         return;
     }
