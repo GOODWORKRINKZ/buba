@@ -260,13 +260,22 @@ void setup() {
     Serial.println("# CSV PLATFORM: PLATFORM,seq,d1_m,d2_m,angle_deg,x_m,y_m,ts_ms");
 #endif
     Serial.println("# ========================================");
-    configureBU04(BU04_ID_ANCHOR1, /*role=*/1);
 
 #if defined(PDOA_MODE)
+    // AT+SETCFG — команда TWR-режима; в PDOA-режиме она не поддерживается.
+    // Конфигурация BU04 для PDOA выполняется командами PDOA-специфичного API.
+
     // Переключаем BU04 в режим PDOA (AT+SETUWBMODE=1), если ещё не был
     {
         String mode = sendAT(AT_GETUWBMODE, 600);
-        if (mode.indexOf('1') < 0) {
+        // Валидный ответ содержит "getuwbmode" и "OK"; простое эхо команды — не ответ
+        bool validResponse  = (mode.indexOf("getuwbmode") >= 0) && (mode.indexOf("OK") >= 0);
+        bool alreadyInPdoaMode = validResponse && (mode.indexOf('1') >= 0);
+        if (alreadyInPdoaMode) {
+            Serial.println("# BU04 уже в режиме PDOA");
+        } else {
+            if (!validResponse)
+                Serial.println("# ПРЕДУПРЕЖДЕНИЕ: нет ответа на AT+GETUWBMODE, пробуем переключить");
             Serial.println("# Переключение BU04 в режим PDOA…");
             String r = sendAT(AT_SETUWBMODE_PDOA, 1000);
             if (r.indexOf("OK") >= 0) {
@@ -275,9 +284,8 @@ void setup() {
                 Serial.println("# PDOA включён");
             } else {
                 Serial.println("# Ошибка переключения PDOA: " + r);
+                Serial.println("# Проверьте UART (PA2/PA3 или PA9/PA10) и питание 500 мА");
             }
-        } else {
-            Serial.println("# BU04 уже в режиме PDOA");
         }
         // Устанавливаем JSON-вывод
         sendAT(AT_USER_CMD_JSON, 500);
@@ -285,6 +293,7 @@ void setup() {
         Serial.println("# Добавьте тег: AT+ADDTAG=<LongAddr64>,<ShortAddr>,1,64,0");
     }
 #else
+    configureBU04(BU04_ID_ANCHOR1, /*role=*/1);
     initESPNow();
 #endif
 
