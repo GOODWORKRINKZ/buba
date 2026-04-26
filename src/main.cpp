@@ -135,6 +135,18 @@ static float updateAvg(float v) {
     return s / n;
 }
 
+// Парсит значение режима из ответа AT+GETUWBMODE.
+// Поддерживает оба формата: "getuwbmode:1" и "getuwbmode: 1".
+// Возвращает 0 (TWR), 1 (PDOA), или -1 если не удалось распознать.
+static int parseUwbMode(const String &resp) {
+    int idx = resp.indexOf("getuwbmode");
+    if (idx < 0 || resp.indexOf("OK") < 0) return -1;
+    int i = idx + 10;  // пропускаем "getuwbmode"
+    while (i < (int)resp.length() && (resp[i] == ':' || resp[i] == ' ')) i++;
+    if (i < (int)resp.length() && isdigit((uint8_t)resp[i])) return resp[i] - '0';
+    return -1;
+}
+
 // Настройка BU04: AT+SETCFG=ID,Role,CH,Rate,Group → AT+SAVE (перезагрузка ~3 с)
 // Источник: BU03/BU04 AT指令 V1.0.6, раздел 1
 // Rate всегда 1 (6.8 Мбит/с — единственный поддерживаемый вариант).
@@ -146,8 +158,7 @@ static void configureBU04(uint8_t id, uint8_t role) {
     // Убеждаемся, что BU04 в TWR-режиме перед AT+SETCFG
     {
         String mode = sendAT(AT_GETUWBMODE, 600);
-        bool validResponse = (mode.indexOf("getuwbmode") >= 0) && (mode.indexOf("OK") >= 0);
-        bool inPdoaMode    = validResponse && (mode.indexOf("getuwbmode:1") >= 0);
+        bool inPdoaMode = (parseUwbMode(mode) == 1);
         if (inPdoaMode) {
             Serial.println("# BU04 в PDOA-режиме — переключаем в TWR…");
             String r = sendAT(AT_SETUWBMODE_TWR, 1000);
@@ -290,13 +301,11 @@ void setup() {
     // Переключаем BU04 в режим PDOA (AT+SETUWBMODE=1), если ещё не был
     {
         String mode = sendAT(AT_GETUWBMODE, 600);
-        // Валидный ответ содержит "getuwbmode" и "OK"; простое эхо команды — не ответ
-        bool validResponse  = (mode.indexOf("getuwbmode") >= 0) && (mode.indexOf("OK") >= 0);
-        bool alreadyInPdoaMode = validResponse && (mode.indexOf("getuwbmode:1") >= 0);
-        if (alreadyInPdoaMode) {
+        int uwbMode = parseUwbMode(mode);
+        if (uwbMode == 1) {
             Serial.println("# BU04 уже в режиме PDOA");
         } else {
-            if (!validResponse)
+            if (uwbMode < 0)
                 Serial.println("# ПРЕДУПРЕЖДЕНИЕ: нет ответа на AT+GETUWBMODE, пробуем переключить");
             Serial.println("# Переключение BU04 в режим PDOA…");
             String r = sendAT(AT_SETUWBMODE_PDOA, 1000);
