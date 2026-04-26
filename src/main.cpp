@@ -215,12 +215,48 @@ static void configureBU04(uint8_t id, uint8_t role) {
         delay(3500);
         flushBU04();
         Serial.println("# BU04 готов");
-    } else {
-        Serial.println("# Ошибка настройки: " + resp);
-        // Читаем текущую конфигурацию для диагностики
+        return;
+    }
+
+    // Оба предыдущих SETCFG провалились.
+    // Читаем текущую конфигурацию для диагностики (например, ID=65535 = заводской сброс).
+    {
         String cfg = sendAT(AT_GETCFG, 1000);
         Serial.println("# Текущий конфиг BU04: " + cfg);
-        Serial.println("# Попробуйте AT+RESTORE для сброса к заводским настройкам");
+    }
+
+    // Последний шанс: AT+RESTORE сбрасывает flash BU04 к заводским настройкам
+    // (включая корректный ID=0) и перезагружает модуль.
+    Serial.println("# Выполняем AT+RESTORE (сброс к заводским)…");
+    bu04.println(AT_RESTORE);
+    delay(4000);
+    flushBU04();
+
+    // После сброса проверяем и при необходимости переключаем в TWR
+    {
+        String modeResp = sendAT(AT_GETUWBMODE, 600);
+        int    uwbMode  = parseUwbMode(modeResp);
+        if (uwbMode != 0) {
+            String r = sendAT(AT_SETUWBMODE_TWR, 1000);
+            if (r.indexOf("OK") >= 0) {
+                bu04.println(AT_SAVE);
+                delay(3500);
+                flushBU04();
+            }
+        }
+    }
+
+    Serial.println("# SETCFG после AT+RESTORE…");
+    resp = sendAT(cmd, 1500);
+    if (resp.indexOf("OK") >= 0) {
+        Serial.println("# Сохранение, BU04 перезагружается (~3 с)…");
+        bu04.println(AT_SAVE);
+        delay(3500);
+        flushBU04();
+        Serial.println("# BU04 готов (после AT+RESTORE)");
+    } else {
+        Serial.println("# Ошибка настройки даже после AT+RESTORE: " + resp);
+        Serial.println("# Проверьте питание 500 мА и паяные соединения BU04→ESP32");
     }
 }
 
