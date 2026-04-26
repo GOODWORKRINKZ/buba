@@ -189,12 +189,32 @@ static void configureBU04(uint8_t id, uint8_t role) {
     uint8_t group = (role == 1) ? BU04_GROUP : 0;
     Serial.printf("# Настройка BU04: id=%u role=%u ch=%u rate=%u group=%u\n",
                   id, role, BU04_CHANNEL, BU04_RATE, group);
-    String cmd = "AT+SETCFG=" + String(id)           + ","
-                               + String(role)         + ","
-                               + String(BU04_CHANNEL) + ","
-                               + String(BU04_RATE)    + ","
-                               + String(group);
-    String resp = sendAT(cmd, 1500);
+
+    // Полная команда с Group (документация V1.0.6, 5 параметров).
+    // Некоторые прошивки поддерживают только 4 параметра (без Group) —
+    // на это указывает отсутствие "Group" в ответе AT+GETCFG.
+    String cmd5 = "AT+SETCFG=" + String(id)           + ","
+                                + String(role)         + ","
+                                + String(BU04_CHANNEL) + ","
+                                + String(BU04_RATE)    + ","
+                                + String(group);
+    String cmd4 = "AT+SETCFG=" + String(id)           + ","
+                                + String(role)         + ","
+                                + String(BU04_CHANNEL) + ","
+                                + String(BU04_RATE);
+
+    // Отправляем обе формы команды: сначала 5-параметровую, при ERR — 4-параметровую.
+    // Возвращает строку ответа (OK → успех, ERR → неуспех).
+    auto trySETCFG = [&]() -> String {
+        String r = sendAT(cmd5, 1500);
+        if (r.indexOf("ERR") >= 0) {
+            Serial.println("# 5-param SETCFG ERR — пробуем 4-param (без Group)…");
+            r = sendAT(cmd4, 1500);
+        }
+        return r;
+    };
+
+    String resp = trySETCFG();
 
     // Если SETCFG вернул ERR, пробуем ещё раз принудительно переключить
     // в TWR и повторить — на случай если первый AT+GETUWBMODE не уловил PDOA
@@ -206,7 +226,7 @@ static void configureBU04(uint8_t id, uint8_t role) {
             delay(3500);
             flushBU04();
         }
-        resp = sendAT(cmd, 1500);
+        resp = trySETCFG();
     }
 
     if (resp.indexOf("OK") >= 0) {
@@ -225,37 +245,45 @@ static void configureBU04(uint8_t id, uint8_t role) {
         Serial.println("# Текущий конфиг BU04: " + cfg);
     }
 
-    // Последний шанс: AT+RESTORE сбрасывает flash BU04 к заводским настройкам
-    // (включая корректный ID=0) и перезагружает модуль.
-    Serial.println("# Выполняем AT+RESTORE (сброс к заводским)…");
-    bu04.println(AT_RESTORE);
-    delay(4000);
+    // Последний шанс: AT+RESTORE сбрасывает настройки к заводским.
+    // Документация: AT+RESTORE сбрасывает в RAM, AT+RESTART применяет
+    // (перезагружает модуль). Без AT+RESTART модуль остаётся в неопределённом
+    // состоянии и продолжает отвергать AT+SETCFG.
+    Serial.println("# Выполняем AT+RESTORE + AT+RESTART…");
+    sendAT(AT_RESTORE, 1500);
+    sendAT(AT_RESTART, 1500);
+    delay(5000);
     flushBU04();
 
-    // После сброса проверяем и при необходимости переключаем в TWR
+    // После перезагрузки проверяем режим и при необходимости переключаем в TWR
     {
         String modeResp = sendAT(AT_GETUWBMODE, 600);
         int    uwbMode  = parseUwbMode(modeResp);
+        Serial.printf("# Режим после RESTORE+RESTART: %d\n", uwbMode);
         if (uwbMode != 0) {
+            Serial.println("# Переключаем в TWR после RESTORE…");
             String r = sendAT(AT_SETUWBMODE_TWR, 1000);
             if (r.indexOf("OK") >= 0) {
                 bu04.println(AT_SAVE);
                 delay(3500);
                 flushBU04();
+                Serial.println("# TWR применён");
+            } else {
+                Serial.println("# Предупреждение: не удалось переключить TWR после RESTORE: " + r);
             }
         }
     }
 
-    Serial.println("# SETCFG после AT+RESTORE…");
-    resp = sendAT(cmd, 1500);
+    Serial.println("# SETCFG после RESTORE+RESTART…");
+    resp = trySETCFG();
     if (resp.indexOf("OK") >= 0) {
         Serial.println("# Сохранение, BU04 перезагружается (~3 с)…");
         bu04.println(AT_SAVE);
         delay(3500);
         flushBU04();
-        Serial.println("# BU04 готов (после AT+RESTORE)");
+        Serial.println("# BU04 готов (после RESTORE+RESTART)");
     } else {
-        Serial.println("# Ошибка настройки даже после AT+RESTORE: " + resp);
+        Serial.println("# Ошибка настройки даже после RESTORE+RESTART: " + resp);
         Serial.println("# Проверьте питание 500 мА и паяные соединения BU04→ESP32");
     }
 }
