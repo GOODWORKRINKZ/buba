@@ -33,7 +33,7 @@
 
 // ----- Конфигурация BU04 -----------------------------------
 // Источник: BU03/BU04 AT指令 V1.0.6, команда AT+SETCFG
-//   AT+SETCFG=X1,X2,X3,1,X4
+//   AT+SETCFG=X1,X2,X3,X4   (4 параметра, группа не поддерживается)
 //   X1: ID устройства (0–10)
 //   X2: роль (0 = тег/TAG, 1 = база/ANCHOR)
 //   X3: канал (0 = CH9 / 7987.2 МГц,  1 = CH5 / 6489.5 МГц)
@@ -96,7 +96,7 @@
 // AT+GETCFG ответ в TWR-режиме:  "getcfg ID:X, Role:X, CH:X, Rate:X, Group:X"
 // AT+GETCFG ответ в PDOA-режиме: "getcfg Dlist:N KList:N Net:XXXX AncID:N Rate:N Filter:N UserCmd:N pdoaOffset:N rngOffset:N"
 #define AT_GETCFG      "AT+GETCFG"
-// AT+SETCFG=ID,Role,CH,1,Group  — формируется в configureBU04()
+// AT+SETCFG=ID,Role,CH,Rate  — формируется в configureBU04() (4 параметра)
 
 // Раздел 2: измерения (TWR)
 #define AT_DISTANCE    "AT+DISTANCE"     // дистанция → "distance: X.XXXXXX"
@@ -107,7 +107,11 @@
 // AT+SETDEV=labelRate,antDelay,kalmanEn,Q,R,corrA,corrB,posEn,posDim
 
 // Раздел 4: PDOA
-// AT+SETUWBMODE=0 → TWR,  AT+SETUWBMODE=1 → PDOA  (требует AT+SAVE)
+// AT+SETUWBMODE=0/1 — меняет twr_pdoa_mode только в RAM, ответа нет (!)
+//   Для сохранения нужен AT+SAVE (запишет NVM + NVIC_SystemReset).
+//   При загрузке с twr_pdoa_mode=1 BU04 идёт в PDOA-ветку (не node_start),
+//   поэтому DW3000 инициализируется без INIT FAILED.
+// AT+SETWORKMODE — другой параметр (workmode, не twr_pdoa_mode), не использовать!
 #define AT_GETUWBMODE  "AT+GETUWBMODE"
 #define AT_SETUWBMODE_TWR   "AT+SETUWBMODE=0"
 #define AT_SETUWBMODE_PDOA  "AT+SETUWBMODE=1"

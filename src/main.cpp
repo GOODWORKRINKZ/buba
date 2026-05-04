@@ -85,7 +85,40 @@ static void flushBU04() {
     while (bu04.available()) bu04.read();
 }
 
-// Отправить AT-команду, вернуть ответ. Ждём "OK"/"ERROR" или таймаут.
+// Ждём готовности BU04 — пингуем AT до ответа OK (до 15 с)
+static bool waitBU04Ready(const char *label = nullptr) {
+    if (label) { Serial.print(label); Serial.print(" "); }
+    Serial.print("# Ожидание BU04");
+    bool ready = false;
+    for (int i = 0; i < 30 && !ready; i++) {
+        flushBU04();
+        bu04.println("AT");
+        uint32_t t0 = millis();
+        String r;
+        while (millis() - t0 < 500) {
+            while (bu04.available()) r += (char)bu04.read();
+            if (r.indexOf("OK") >= 0) { ready = true; break; }
+            delay(10);
+        }
+        if (!ready) { Serial.print('.'); delay(500); }
+    }
+    Serial.println(ready ? " OK" : " TIMEOUT");
+    flushBU04();
+    return ready;
+}
+
+// Ждём готовности BU04 бесконечно, с периодическим printout.
+// Возвращает управление только когда BU04 ответил OK.
+static void waitBU04ReadyForever(const char *msg) {
+    Serial.println(msg);
+    while (true) {
+        if (waitBU04Ready()) return;
+        Serial.println("# BU04 не отвечает — передёрните питание ТОЛЬКО BU04 (не ESP32)");
+        delay(2000);
+    }
+}
+
+// Отправить AT-команду, вернуть ответ. Ждём "OK"/"ERR" или таймаут.
 static String sendAT(const String &cmd, uint32_t timeoutMs = 1000) {
     flushBU04();
     bu04.println(cmd);
@@ -93,8 +126,8 @@ static String sendAT(const String &cmd, uint32_t timeoutMs = 1000) {
     uint32_t t0 = millis();
     while (millis() - t0 < timeoutMs) {
         while (bu04.available()) resp += (char)bu04.read();
-        if (resp.indexOf("OK")    >= 0) break;
-        if (resp.indexOf("ERROR") >= 0) break;
+        if (resp.indexOf("OK")  >= 0) break;
+        if (resp.indexOf("ERR") >= 0) break;  // BU04 шлёт "ERR", не "ERROR"
         delay(10);
     }
     return resp;
@@ -135,31 +168,43 @@ static float updateAvg(float v) {
     return s / n;
 }
 
-// Настройка BU04: AT+SETCFG=ID,Role,CH,Rate,Group → AT+SAVE (перезагрузка ~3 с)
-// Источник: BU03/BU04 AT指令 V1.0.6, раздел 1
-// Rate всегда 1 (6.8 Мбит/с — единственный поддерживаемый вариант).
-// Group: якоря настраивают в свою группу; теги оставляют 0.
-static void configureBU04(uint8_t id, uint8_t role) {
-    uint8_t group = (role == 1) ? BU04_GROUP : 0;
-    Serial.printf("# Настройка BU04: id=%u role=%u ch=%u rate=%u group=%u\n",
-                  id, role, BU04_CHANNEL, BU04_RATE, group);
+// Настройка BU04: проверяет текущий конфиг, применяет только если нужно.
+// AT+SETCFG: пишет в RAM + вызывает node_start() → DW3000 init → возможен INIT FAILED.
+// AT+SAVE: пишет NVM + NVIC_SystemReset. SETCFG БЕЗ SAVE не переживёт power-cycle.
+// После soft reset DW3000 может не инициализироваться — ждём неограниченно.
+static bool configureBU04(uint8_t id, uint8_t role) {
+    String cur = sendAT("AT+GETCFG", 2000);
+    String wantId   = "ID:"   + String(id)   + ",";
+    String wantRole = "Role:" + String(role) + ",";
+    if (cur.indexOf(wantId) >= 0 && cur.indexOf(wantRole) >= 0) {
+        Serial.printf("# BU04 конфиг актуален (id=%u role=%u)\n", id, role);
+        return true;
+    }
+    Serial.printf("# Настройка BU04: id=%u role=%u ch=%u rate=%u\n",
+                  id, role, BU04_CHANNEL, BU04_RATE);
     String cmd = "AT+SETCFG=" + String(id)           + ","
                                + String(role)         + ","
                                + String(BU04_CHANNEL) + ","
-                               + String(BU04_RATE)    + ","
-                               + String(group);
+                               + String(BU04_RATE);
     String resp = sendAT(cmd, 1500);
     if (resp.indexOf("OK") >= 0) {
-        Serial.println("# Сохранение, BU04 перезагружается (~3 с)…");
-        bu04.println(AT_SAVE);
-        delay(3500);
+        // Немедленно шлём SAVE — он должен встать в очередь до того как
+        // INIT FAILED захватит обработчик. SAVE пишет NVM + NVIC_SystemReset.
         flushBU04();
+        bu04.println(AT_SAVE);
+        Serial.println("# SETCFG+SAVE отправлены, BU04 перезагружается…");
+        // После soft reset DW3000 может застрять в INIT FAILED.
+        // Ждём неограниченно — если не поднялся, просим power-cycle BU04.
+        waitBU04ReadyForever("# BU04 не отвечает — выключите/включите питание ТОЛЬКО BU04 (не ESP32)");
         Serial.println("# BU04 готов");
+        return true;
     } else {
-        Serial.println("# Ошибка настройки: " + resp);
-        Serial.println("# Попробуйте другой UART (PA9/PA10) или проверьте питание 500 мА");
+        Serial.println("# Ошибка SETCFG: " + resp);
+        Serial.println("# Проверьте питание BU04 (нужен внешний 3.3V, не от ESP32)");
+        return false;
     }
 }
+
 
 // ============================================================
 //  ESP-NOW (только ANCHOR1 и ANCHOR2)
@@ -244,9 +289,16 @@ void setup() {
     Serial.begin(SERIAL_BAUD);
     delay(500);
 
-    // Запускаем UART к BU04 (USART2: PA2=TX→GPIO3, PA3=RX←GPIO2)
+    // Запускаем UART к BU04 (USART1: PA9=TX→GPIO3, PA10=RX←GPIO2)
     bu04.begin(BU04_BAUD, SERIAL_8N1, PIN_BU04_RX, PIN_BU04_TX);
-    delay(2000);    // ждём загрузку STM32 в BU04
+    delay(500);
+
+    // Ждём готовности BU04 — пингуем AT до ответа OK
+    waitBU04Ready();
+    // BU04 отвечает на AT раньше, чем заканчивает читать конфиг из flash.
+    // Даём 3 секунды на полную инициализацию DW3000 и загрузку NVM.
+    Serial.println("# Ждём инициализацию BU04 (3 с)…");
+    delay(3000);
     flushBU04();
 
 #if defined(ROLE_ANCHOR1)
@@ -260,31 +312,83 @@ void setup() {
     Serial.println("# CSV PLATFORM: PLATFORM,seq,d1_m,d2_m,angle_deg,x_m,y_m,ts_ms");
 #endif
     Serial.println("# ========================================");
-    configureBU04(BU04_ID_ANCHOR1, /*role=*/1);
 
 #if defined(PDOA_MODE)
-    // Переключаем BU04 в режим PDOA (AT+SETUWBMODE=1), если ещё не был
+    // ── Конфигурация BU04 для PDOA ──────────────────────────────────────────
+    // Из SDK (cmd_fn.c):
+    //   AT+SETCFG     → RAM + вызывает node_start() → возможен INIT FAILED
+    //   AT+SETUWBMODE → RAM только (twr_pdoa_mode), нет ответа, нет сброса
+    //   AT+SAVE       → пишет весь sys_para в NVM + NVIC_SystemReset
+    //
+    // Ключевой факт: при загрузке с twr_pdoa_mode=1 BU04 идёт в PDOA-ветку
+    // (ds_twr_sts_sdc_responder), а не в node_start(). DW3000 инициализируется
+    // чисто → нет INIT FAILED.
+    //
+    // Стратегия: бурст SETCFG + SETUWBMODE=1 + SAVE в одном потоке.
+    // node_start() может заблокировать UART на ~4с, но SAVE уже в буфере
+    // STM32 UART RX. После NVIC_SystemReset → загрузка в PDOA → всё чисто.
     {
-        String mode = sendAT(AT_GETUWBMODE, 600);
-        if (mode.indexOf('1') < 0) {
-            Serial.println("# Переключение BU04 в режим PDOA…");
-            String r = sendAT(AT_SETUWBMODE_PDOA, 1000);
-            if (r.indexOf("OK") >= 0) {
-                bu04.println(AT_SAVE);
-                delay(3500); flushBU04();
-                Serial.println("# PDOA включён");
+        // Сначала проверяем, не в PDOA ли уже (twr_pdoa_mode=1 → всё сохранено)
+        String uwbm = sendAT(AT_GETUWBMODE, 600);
+        bool inPdoa = uwbm.indexOf("1") >= 0;
+
+        if (!inPdoa) {
+            // TWR режим — проверяем ID/Role в TWR-формате AT+GETCFG
+            // В PDOA-режиме AT+GETCFG имеет другой формат (AncID, Dlist, …)
+            String cfg = sendAT(AT_GETCFG, 2000);
+            bool twrOk = cfg.indexOf("ID:" + String(BU04_ID_ANCHOR1) + ",") >= 0 &&
+                         cfg.indexOf("Role:1,") >= 0;
+
+            flushBU04();
+
+            if (!twrOk) {
+                // Заводские или неверные настройки. Бурст: SETCFG → SETUWBMODE=1 → SAVE.
+                // AT+SAVE встаёт в UART-буфер STM32 до того, как node_start() заблокирует.
+                // После NVIC_SystemReset BU04 загружается с twr_pdoa_mode=1 → PDOA ветка.
+                Serial.printf("# Первичная настройка PDOA: id=%u role=1 ch=%u rate=%u\n",
+                              BU04_ID_ANCHOR1, BU04_CHANNEL, BU04_RATE);
+                bu04.print("AT+SETCFG=" + String(BU04_ID_ANCHOR1) + ",1," +
+                           String(BU04_CHANNEL) + "," + String(BU04_RATE) + "\r\n");
             } else {
-                Serial.println("# Ошибка переключения PDOA: " + r);
+                // ID/Role уже верные, только меняем режим — SETCFG не нужен,
+                // node_start() не вызывается, INIT FAILED невозможен.
+                Serial.println("# TWR конфиг корректен, переключаем в PDOA...");
             }
+
+            // В обоих случаях: SETUWBMODE=1 (RAM) + SAVE (NVM + сброс)
+            bu04.print("AT+SETUWBMODE=1\r\n");
+            bu04.print("AT+SAVE\r\n");
+
+            // SAVE запишет twr_pdoa_mode=1 в NVM и вызовет NVIC_SystemReset.
+            // После перезагрузки BU04 идёт в PDOA-ветку, DW3000 стартует чисто.
+            waitBU04ReadyForever("# BU04 не отвечает — выключите/включите питание ТОЛЬКО BU04 (не ESP32)");
+            Serial.println("# BU04 готов в режиме PDOA");
         } else {
             Serial.println("# BU04 уже в режиме PDOA");
         }
+
         // Устанавливаем JSON-вывод
         sendAT(AT_USER_CMD_JSON, 500);
         Serial.println("# Формат вывода: JSON");
+
+        // Печатаем информацию об устройстве
+        {
+            String ver = sendAT("AT+GETVER", 500);
+            ver.trim();
+            Serial.println("# " + ver);
+            String cfg = sendAT(AT_GETCFG, 1000);
+            cfg.trim();
+            // AT+GETCFG в PDOA: getcfg Dlist:N KList:N Net:XXXX AncID:N Rate:N ...
+            Serial.println("# " + cfg);
+        }
+
         Serial.println("# Добавьте тег: AT+ADDTAG=<LongAddr64>,<ShortAddr>,1,64,0");
     }
 #else
+    if (!configureBU04(BU04_ID_ANCHOR1, /*role=*/1)) {
+        Serial.println("# СТОП: BU04 не готов. Передёрните питание всей схемы.");
+        while (true) delay(1000);  // не продолжаем
+    }
     initESPNow();
 #endif
 
@@ -300,10 +404,17 @@ void setup() {
     Serial.println("# ========================================");
     Serial.println("# BU04 UWB – TAG (пользователь)");
     Serial.println("# CSV: TAG,seq,d_m,avg_m,ts_ms");
-    // Примечание: AT+GETSENSOR поддерживает только BU03.
-    // BU04 акселерометра не имеет (нет аппаратной поддержки).
     Serial.println("# ========================================");
     configureBU04(BU04_ID_TAG, /*role=*/0);
+    {
+        String ver = sendAT("AT+GETVER", 500);
+        ver.trim();
+        Serial.println("# " + ver);
+        String cfg = sendAT(AT_GETCFG, 1000);
+        cfg.trim();
+        // AT+GETCFG в TWR: getcfg ID:X, Role:X, CH:X, Rate:X, Group:X
+        Serial.println("# " + cfg);
+    }
 #endif
 
     Serial.println("# Запуск измерений…");
@@ -332,8 +443,27 @@ void loop() {
         //   Range   — дистанция в см (округлённо)
         //   Angle   — угол в градусах (целое)
         //
+        // Pass-through: строки из Serial → BU04 (AT+ADDTAG, AT+GETDLIST и т.д.)
+        // Буферизуем до '\n', затем отправляем целой строкой.
+        {
+            static String serialBuf;
+            while (Serial.available()) {
+                char c = (char)Serial.read();
+                if (c == '\n' || c == '\r') {
+                    serialBuf.trim();
+                    if (serialBuf.length() > 0) {
+                        bu04.println(serialBuf);
+                        Serial.println("> " + serialBuf);
+                        serialBuf = "";
+                    }
+                } else {
+                    serialBuf += c;
+                }
+            }
+        }
+
         // Читаем всё, что накопилось в буфере UART за период POLL_INTERVAL_MS.
-        // Одна строка = одно измерение. Если строк несколько — берём последнюю.
+        // Tag_Addr: строки → CSV. Остальное (ответы AT) → Serial с префиксом "< ".
         String lastLine;
         {
             String buf;
@@ -343,7 +473,13 @@ void loop() {
                     char c = (char)bu04.read();
                     if (c == '\n') {
                         buf.trim();
-                        if (buf.startsWith("Tag_Addr:")) lastLine = buf;
+                        if (buf.length() > 0) {
+                            if (buf.startsWith("Tag_Addr:")) {
+                                lastLine = buf;
+                            } else {
+                                Serial.println("< " + buf);  // ответ AT-команды
+                            }
+                        }
                         buf = "";
                     } else {
                         buf += c;
