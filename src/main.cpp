@@ -168,40 +168,143 @@ static float updateAvg(float v) {
     return s / n;
 }
 
-// Настройка BU04: проверяет текущий конфиг, применяет только если нужно.
-// AT+SETCFG: пишет в RAM + вызывает node_start() → DW3000 init → возможен INIT FAILED.
-// AT+SAVE: пишет NVM + NVIC_SystemReset. SETCFG БЕЗ SAVE не переживёт power-cycle.
-// После soft reset DW3000 может не инициализироваться — ждём неограниченно.
-static bool configureBU04(uint8_t id, uint8_t role) {
-    String cur = sendAT("AT+GETCFG", 2000);
-    String wantId   = "ID:"   + String(id)   + ",";
-    String wantRole = "Role:" + String(role) + ",";
-    if (cur.indexOf(wantId) >= 0 && cur.indexOf(wantRole) >= 0) {
-        Serial.printf("# BU04 конфиг актуален (id=%u role=%u)\n", id, role);
-        return true;
-    }
-    Serial.printf("# Настройка BU04: id=%u role=%u ch=%u rate=%u\n",
-                  id, role, BU04_CHANNEL, BU04_RATE);
-    String cmd = "AT+SETCFG=" + String(id)           + ","
-                               + String(role)         + ","
-                               + String(BU04_CHANNEL) + ","
-                               + String(BU04_RATE);
-    String resp = sendAT(cmd, 1500);
-    if (resp.indexOf("OK") >= 0) {
-        // Немедленно шлём SAVE — он должен встать в очередь до того как
-        // INIT FAILED захватит обработчик. SAVE пишет NVM + NVIC_SystemReset.
+// f_getcfg (cmd_fn.c) всегда возвращает "getcfg ID:X, Role:X, CH:X, Rate:X"
+// независимо от twr_pdoa_mode.
+//
+// f_setcfg для role=0 ВСЕГДА вызывает tag_start() без reset_DWIC → INIT FAILED навсегда
+// при холодном старте. at_cmd_recv (workmode=1) не понимает AT+SETCFG — другой протокол.
+//
+// Стратегия для role=0 (TAG): 2-фазная через PDOA-якорь.
+//   Фаза 1 (ID=65535): burst SETCFG=id,1 + SETUWBMODE=1 + SAVE
+//     → node_start() → reset_DWIC → DW3000 up → event-loop обрабатывает SETUWBMODE+SAVE
+//     → reboot → ID=id, role=1, twr_pdoa_mode=1 → ds_twr_sts_sdc_responder()
+//   Фаза 2 (ID=id, Role=1): burst SETCFG=id,0 + SAVE
+//     → tag_start() из event-loop PDOA-якоря — DW3000 уже работает
+//     → dwt_initialise() OK → tag_start() входит в цикл → SAVE обрабатывается
+//     → reboot → ID=id, role=0, twr_pdoa_mode=1 → ds_twr_sts_sdc_initiator() ✓
+//
+// Стратегия для role=1 (ANCHOR TWR):
+//   Burst SETCFG+SAVE → node_start() (с reset_DWIC) → SAVE через UART ISR → OK.
+
+// Ожидает пока BU04 перестанет отвечать (уйдёт на перезагрузку).
+// Возвращает true если BU04 "погас" в течение timeoutMs.
+static bool waitBU04Dark(uint32_t timeoutMs) {
+    Serial.print("# Ожидание сброса BU04");
+    uint32_t deadline = millis() + timeoutMs;
+    while (millis() < deadline) {
         flushBU04();
-        bu04.println(AT_SAVE);
-        Serial.println("# SETCFG+SAVE отправлены, BU04 перезагружается…");
-        // После soft reset DW3000 может застрять в INIT FAILED.
-        // Ждём неограниченно — если не поднялся, просим power-cycle BU04.
-        waitBU04ReadyForever("# BU04 не отвечает — выключите/включите питание ТОЛЬКО BU04 (не ESP32)");
-        Serial.println("# BU04 готов");
-        return true;
-    } else {
-        Serial.println("# Ошибка SETCFG: " + resp);
-        Serial.println("# Проверьте питание BU04 (нужен внешний 3.3V, не от ESP32)");
-        return false;
+        bu04.print("AT\r\n");
+        delay(250);
+        bool alive = bu04.available();
+        flushBU04();
+        if (!alive) { Serial.println(" (сброс!)"); return true; }
+        Serial.print('.');
+        delay(100);
+    }
+    Serial.println(" (не перезагрузился!)");
+    return false;
+}
+
+static void configureBU04(uint8_t id, uint8_t role) {
+    const String wantId   = "ID:"   + String(id)   + ",";
+    const String wantRole = "Role:" + String(role) + ",";
+    for (;;) {
+        String cur = sendAT(AT_GETCFG, 2000);
+        { int nl = cur.indexOf('\n'); Serial.printf("# GETCFG: %s\n", (nl > 0 ? cur.substring(0, nl) : cur).c_str()); }
+
+        if (cur.indexOf(wantId) >= 0 && cur.indexOf(wantRole) >= 0) {
+            Serial.printf("# BU04 конфиг: id=%u role=%u\n", id, role);
+            return;
+        }
+
+        if (role == 0) {
+            // ── TAG: 2-фазная стратегия через PDOA-якорь ────────────────────────
+            bool isId65535 = cur.indexOf("ID:65535") >= 0;
+            bool isRole1   = cur.indexOf("Role:1,") >= 0;
+
+            if (isId65535 || (!isRole1 && cur.indexOf(wantId) < 0)) {
+                // Фаза 1: некonfigурированный → PDOA-якорь.
+                // node_start() содержит reset_DWIC → DW3000 инициализируется.
+                // SAVE в UART очереди обрабатывается из event-loop node_start.
+                Serial.println("# [TAG] Фаза 1: настройка как PDOA-якорь...");
+                flushBU04();
+                bu04.print("AT+SETCFG=" + String(id) + ",1," +
+                           String(BU04_CHANNEL) + "," + String(BU04_RATE) + "\r\n");
+                bu04.print("AT+SETUWBMODE=1\r\n");
+                bu04.print("AT+SAVE\r\n");
+                // node_start() → event-loop → SETUWBMODE+SAVE → NVIC_SystemReset
+                waitBU04ReadyForever("# Ждём перезагрузку (фаза 1)...");
+                delay(2000);
+                flushBU04();
+
+            } else if (isRole1) {
+                // Фаза 2: работаем как PDOA-якорь → переключаем в тег.
+                // ds_twr_sts_sdc_responder работает, DW3000 инициализирован.
+                // tag_start() вызывается из event-loop якоря → DW3000 жив →
+                // dwt_initialise() OK → tag_start() входит в цикл → SAVE обрабатывается.
+                Serial.println("# [TAG] Фаза 2: переключение PDOA-якорь → тег...");
+                flushBU04();
+                bu04.print("AT+SETCFG=" + String(id) + ",0," +
+                           String(BU04_CHANNEL) + "," + String(BU04_RATE) + "\r\n");
+                bu04.print("AT+SAVE\r\n");
+                // tag_start() с работающим DW3000 → обрабатывает SAVE → NVIC_SystemReset
+                delay(1000); // время на обработку SETCFG + запуск tag_start()
+                if (waitBU04Dark(20000)) {
+                    // BU04 перезагрузился — SAVE был обработан ✓
+                    waitBU04ReadyForever("# Ждём загрузку BU04 (тег)...");
+                    delay(3000);
+                    flushBU04();
+                } else {
+                    // tag_start() не обработал SAVE (не перезагрузился за 20с).
+                    // После power cycle BU04 загрузится из NVM фазы 1 (PDOA-якорь).
+                    Serial.println("# SAVE не обработан. Power cycle BU04 → загрузится как PDOA-якорь (фаза 1 выполнена).");
+                    waitBU04ReadyForever("# Выключите и включите ТОЛЬКО BU04, затем ждём...");
+                    delay(2000);
+                    flushBU04();
+                }
+            }
+
+        } else {
+            // ── ANCHOR TWR: burst SETCFG+SAVE ───────────────────────────────────
+            // node_start() вызывает reset_DWIC → DW3000 init OK.
+            // SAVE через UART ISR очередь → NVM записан → NVIC_SystemReset.
+            Serial.println("# [ANCHOR] Запись конфига (SETCFG+SAVE)...");
+            flushBU04();
+            bu04.print("AT+SETCFG=" + String(id) + ",1," +
+                       String(BU04_CHANNEL) + "," + String(BU04_RATE) + "\r\n");
+            bu04.print("AT+SAVE\r\n");
+            Serial.println("# Ждём 12с (node_start + SAVE + reset)...");
+            delay(12000);
+            Serial.println("# Нужен power cycle. Выключите и включите ТОЛЬКО BU04.");
+            Serial.print("# Ожидание отключения BU04");
+            while (true) {
+                flushBU04();
+                bu04.print("AT\r\n");
+                uint32_t t0 = millis();
+                bool alive = false;
+                while (millis() - t0 < 300) {
+                    if (bu04.available()) { alive = true; flushBU04(); break; }
+                    delay(5);
+                }
+                if (!alive) { Serial.println(" (выключен)"); break; }
+                Serial.print('.');
+                delay(200);
+            }
+            flushBU04();
+            Serial.println("# Включите питание BU04");
+            Serial.print("# Ожидание старта BU04");
+            {
+                uint32_t deadline = millis() + 60000;
+                while (millis() < deadline && !bu04.available()) {
+                    if (millis() % 2000 < 5) Serial.print('.');
+                    delay(5);
+                }
+                Serial.println(bu04.available() ? " (старт!)" : " (таймаут)");
+            }
+            flushBU04();
+            Serial.println("# Ждём 8с (node_start + инициализация DW3000)...");
+            delay(8000);
+        }
     }
 }
 
@@ -385,10 +488,7 @@ void setup() {
         Serial.println("# Добавьте тег: AT+ADDTAG=<LongAddr64>,<ShortAddr>,1,64,0");
     }
 #else
-    if (!configureBU04(BU04_ID_ANCHOR1, /*role=*/1)) {
-        Serial.println("# СТОП: BU04 не готов. Передёрните питание всей схемы.");
-        while (true) delay(1000);  // не продолжаем
-    }
+    configureBU04(BU04_ID_ANCHOR1, /*role=*/1);
     initESPNow();
 #endif
 

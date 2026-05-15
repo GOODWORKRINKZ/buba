@@ -109,9 +109,15 @@
 // Раздел 4: PDOA
 // AT+SETUWBMODE=0/1 — меняет twr_pdoa_mode только в RAM, ответа нет (!)
 //   Для сохранения нужен AT+SAVE (запишет NVM + NVIC_SystemReset).
-//   При загрузке с twr_pdoa_mode=1 BU04 идёт в PDOA-ветку (не node_start),
-//   поэтому DW3000 инициализируется без INIT FAILED.
-// AT+SETWORKMODE — другой параметр (workmode, не twr_pdoa_mode), не использовать!
+//   При загрузке с twr_pdoa_mode=1 BU04 идёт в PDOA-ветку (не node_start).
+//
+// AT+SETWORKMODE=0/1 — workmode (РАЗНЫЙ параметр от twr_pdoa_mode!):
+//   0 = normal (nt_task: while(nodeAddr==0xFFFF){AT} → node/tag_start)
+//   1 = AT-only (nt_task: while(1){AT} НАВСЕГДА, node/tag_start НЕ вызываются)
+//   Пишет в NVM + NVIC_SystemReset.
+//   При workmode=1: команды идут через at_cmd_recv() (из aitcmd.lib),
+//   который содержит reset_DWIC + dwt_initialise + retry при INIT FAILED.
+//   Используется для конфигурации тега (role=0) где tag_start() без reset_DWIC.
 #define AT_GETUWBMODE  "AT+GETUWBMODE"
 #define AT_SETUWBMODE_TWR   "AT+SETUWBMODE=0"
 #define AT_SETUWBMODE_PDOA  "AT+SETUWBMODE=1"
