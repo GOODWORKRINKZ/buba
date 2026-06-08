@@ -212,56 +212,83 @@ static void configureBU04(uint8_t id, uint8_t role) {
         String cur = sendAT(AT_GETCFG, 2000);
         { int nl = cur.indexOf('\n'); Serial.printf("# GETCFG: %s\n", (nl > 0 ? cur.substring(0, nl) : cur).c_str()); }
 
+        // BU04 в INIT FAILED — DW3000 ещё не поднялся, ждём
+        if (cur.indexOf("INIT FAILED") >= 0) {
+            Serial.println("# BU04 инициализируется (INIT FAILED), ждём 3 с…");
+            delay(3000);
+            continue;
+        }
+
         if (cur.indexOf(wantId) >= 0 && cur.indexOf(wantRole) >= 0) {
             Serial.printf("# BU04 конфиг: id=%u role=%u\n", id, role);
             return;
         }
 
         if (role == 0) {
-            // ── TAG: 2-фазная стратегия через PDOA-якорь ────────────────────────
-            bool isId65535 = cur.indexOf("ID:65535") >= 0;
-            bool isRole1   = cur.indexOf("Role:1,") >= 0;
+            // ── TAG: настройка через PDOA-режим ──────────────────────────
+            // Проблема: SETCFG → tag_start() → INIT FAILED → while(1){}.
+            // SAVE не обрабатывается, watchdog сбрасывает BU04 → заводские.
+            //
+            // Стратегия: сначала переводим в PDOA (SETUWBMODE+SAVE, без SETCFG).
+            // BU04 с twr_pdoa_mode=1 + nodeAddr=0xFFFF → AT-цикл + retry DW3000.
+            // Ждём пока DW3000 поднимется → SETCFG БЕЗ SAVE (только RAM).
+            // Если DW3000 жив → SETCFG применился → SAVE → готово.
+            // Если DW3000 мёртв → tag_start() → while(1) → watchdog → рестарт → повтор.
 
-            if (isId65535 || (!isRole1 && cur.indexOf(wantId) < 0)) {
-                // Фаза 1: некonfigурированный → PDOA-якорь.
-                // node_start() содержит reset_DWIC → DW3000 инициализируется.
-                // SAVE в UART очереди обрабатывается из event-loop node_start.
-                Serial.println("# [TAG] Фаза 1: настройка как PDOA-якорь...");
-                flushBU04();
-                bu04.print("AT+SETCFG=" + String(id) + ",1," +
-                           String(BU04_CHANNEL) + "," + String(BU04_RATE) + "\r\n");
-                bu04.print("AT+SETUWBMODE=1\r\n");
-                bu04.print("AT+SAVE\r\n");
-                // node_start() → event-loop → SETUWBMODE+SAVE → NVIC_SystemReset
-                waitBU04ReadyForever("# Ждём перезагрузку (фаза 1)...");
-                delay(2000);
-                flushBU04();
+            for (;;) {
+                String cur = sendAT(AT_GETCFG, 2000);
+                { int nl = cur.indexOf('\n'); Serial.printf("# GETCFG: %s\n", (nl > 0 ? cur.substring(0, nl) : cur).c_str()); }
 
-            } else if (isRole1) {
-                // Фаза 2: работаем как PDOA-якорь → переключаем в тег.
-                // ds_twr_sts_sdc_responder работает, DW3000 инициализирован.
-                // tag_start() вызывается из event-loop якоря → DW3000 жив →
-                // dwt_initialise() OK → tag_start() входит в цикл → SAVE обрабатывается.
-                Serial.println("# [TAG] Фаза 2: переключение PDOA-якорь → тег...");
+                // Уже тег с нужным ID — выходим
+                if (cur.indexOf(wantId) >= 0 && cur.indexOf(wantRole) >= 0) {
+                    Serial.printf("# BU04 конфиг: id=%u role=%u\n", id, role);
+                    return;
+                }
+
+                // Проверяем режим
+                String uwbm = sendAT(AT_GETUWBMODE, 600);
+                bool inPdoa = uwbm.indexOf("1") >= 0;
+
+                if (!inPdoa) {
+                    // Шаг 1: вход в PDOA БЕЗ SETCFG
+                    Serial.println("# [TAG] Вход в PDOA-режим (SETUWBMODE+SAVE)...");
+                    flushBU04();
+                    bu04.print("AT+SETUWBMODE=1\r\n");
+                    bu04.print("AT+SAVE\r\n");
+                    waitBU04ReadyForever("# Ждём перезагрузку BU04...");
+                    delay(5000);
+                    flushBU04();
+                    continue;
+                }
+
+                // Шаг 2: PDOA-режим есть, ждём DW3000.
+                // Пробуем SETCFG БЕЗ SAVE — только в RAM.
+                Serial.println("# [TAG] Попытка SETCFG (без SAVE, только RAM)...");
                 flushBU04();
                 bu04.print("AT+SETCFG=" + String(id) + ",0," +
                            String(BU04_CHANNEL) + "," + String(BU04_RATE) + "\r\n");
-                bu04.print("AT+SAVE\r\n");
-                // tag_start() с работающим DW3000 → обрабатывает SAVE → NVIC_SystemReset
-                delay(1000); // время на обработку SETCFG + запуск tag_start()
-                if (waitBU04Dark(20000)) {
-                    // BU04 перезагрузился — SAVE был обработан ✓
-                    waitBU04ReadyForever("# Ждём загрузку BU04 (тег)...");
+                // Ждём: либо tag_start() отработал, либо watchdog сбросил
+                delay(5000);
+                flushBU04();
+
+                // Проверяем — применился ли SETCFG?
+                cur = sendAT(AT_GETCFG, 2000);
+                { int nl = cur.indexOf('\n'); Serial.printf("# GETCFG: %s\n", (nl > 0 ? cur.substring(0, nl) : cur).c_str()); }
+
+                if (cur.indexOf(wantId) >= 0 && cur.indexOf(wantRole) >= 0) {
+                    // DW3000 жив! Сохраняем.
+                    Serial.println("# DW3000 работает! Сохраняем конфиг...");
+                    sendAT(AT_SAVE, 500);
+                    waitBU04ReadyForever("# Ждём перезагрузку после SAVE...");
                     delay(3000);
                     flushBU04();
-                } else {
-                    // tag_start() не обработал SAVE (не перезагрузился за 20с).
-                    // После power cycle BU04 загрузится из NVM фазы 1 (PDOA-якорь).
-                    Serial.println("# SAVE не обработан. Power cycle BU04 → загрузится как PDOA-якорь (фаза 1 выполнена).");
-                    waitBU04ReadyForever("# Выключите и включите ТОЛЬКО BU04, затем ждём...");
-                    delay(2000);
-                    flushBU04();
+                    continue;  // проверим GETCFG на след. итерации
                 }
+
+                // BU04 вернулся к заводским — DW3000 не поднялся.
+                // Ждём и пробуем снова.
+                Serial.println("# DW3000 пока не готов, ждём 5 с…");
+                delay(5000);
             }
 
         } else {
