@@ -225,15 +225,18 @@ static void configureBU04(uint8_t id, uint8_t role) {
         }
 
         if (role == 0) {
-            // ── TAG: настройка через PDOA-режим ──────────────────────────
-            // Проблема: SETCFG → tag_start() → INIT FAILED → while(1){}.
-            // SAVE не обрабатывается, watchdog сбрасывает BU04 → заводские.
+            // ── TAG: настройка через AT+SETWORKMODE ──────────────────────
+            // Критическое открытие из SDK: AT+SETCFG ВСЕГДА вызывает node_start()/tag_start()
+            // и выходит из AT-режима. RAM-only SETCFG невозможен.
             //
-            // Стратегия: сначала переводим в PDOA (SETUWBMODE+SAVE, без SETCFG).
-            // BU04 с twr_pdoa_mode=1 + nodeAddr=0xFFFF → AT-цикл + retry DW3000.
-            // Ждём пока DW3000 поднимется → SETCFG БЕЗ SAVE (только RAM).
-            // Если DW3000 жив → SETCFG применился → SAVE → готово.
-            // Если DW3000 мёртв → tag_start() → while(1) → watchdog → рестарт → повтор.
+            // Правильная стратегия:
+            // 1. AT+SETWORKMODE=1 → BU04 остаётся в AT-цикле навсегда (AT-only mode)
+            // 2. AT+SETCFG=id,0,ch,rate → устанавливает конфиг в RAM, но workmode=1
+            //    предотвращает вызов node_start()/tag_start()
+            // 3. AT+SAVE → записывает NVM + NVIC_SystemReset
+            // 4. После перезагрузки: workmode=1, nodeAddr=id, role=0 → остаётся в AT-цикле
+            // 5. AT+SETWORKMODE=0 → выходит из AT-цикла, вызывает tag_start() с уже
+            //    инициализированным DW3000 (aitcmd.lib ретраила его в AT-режиме)
 
             for (;;) {
                 String cur = sendAT(AT_GETCFG, 2000);
@@ -245,15 +248,15 @@ static void configureBU04(uint8_t id, uint8_t role) {
                     return;
                 }
 
-                // Проверяем режим
-                String uwbm = sendAT(AT_GETUWBMODE, 600);
-                bool inPdoa = uwbm.indexOf("1") >= 0;
+                // Проверяем workmode
+                String wm = sendAT("AT+GETWORKMODE", 600);
+                bool inATMode = wm.indexOf("workmode: 1") >= 0;
 
-                if (!inPdoa) {
-                    // Шаг 1: вход в PDOA БЕЗ SETCFG
-                    Serial.println("# [TAG] Вход в PDOA-режим (SETUWBMODE+SAVE)...");
+                if (!inATMode) {
+                    // Шаг 1: вход в AT-only режим
+                    Serial.println("# [TAG] Вход в AT-only режим (SETWORKMODE=1)...");
                     flushBU04();
-                    bu04.print("AT+SETUWBMODE=1\r\n");
+                    bu04.print("AT+SETWORKMODE=1\r\n");
                     bu04.print("AT+SAVE\r\n");
                     waitBU04ReadyForever("# Ждём перезагрузку BU04...");
                     delay(5000);
@@ -261,14 +264,12 @@ static void configureBU04(uint8_t id, uint8_t role) {
                     continue;
                 }
 
-                // Шаг 2: PDOA-режим есть, ждём DW3000.
-                // Пробуем SETCFG БЕЗ SAVE — только в RAM.
-                Serial.println("# [TAG] Попытка SETCFG (без SAVE, только RAM)...");
+                // Шаг 2: AT-only режим активен, устанавливаем конфиг
+                Serial.println("# [TAG] Установка конфига (SETCFG в AT-only режиме)...");
                 flushBU04();
                 bu04.print("AT+SETCFG=" + String(id) + ",0," +
                            String(BU04_CHANNEL) + "," + String(BU04_RATE) + "\r\n");
-                // Ждём: либо tag_start() отработал, либо watchdog сбросил
-                delay(5000);
+                delay(1000);
                 flushBU04();
 
                 // Проверяем — применился ли SETCFG?
@@ -276,18 +277,26 @@ static void configureBU04(uint8_t id, uint8_t role) {
                 { int nl = cur.indexOf('\n'); Serial.printf("# GETCFG: %s\n", (nl > 0 ? cur.substring(0, nl) : cur).c_str()); }
 
                 if (cur.indexOf(wantId) >= 0 && cur.indexOf(wantRole) >= 0) {
-                    // DW3000 жив! Сохраняем.
-                    Serial.println("# DW3000 работает! Сохраняем конфиг...");
+                    // Конфиг применён! Сохраняем.
+                    Serial.println("# Конфиг применён! Сохраняем...");
                     sendAT(AT_SAVE, 500);
                     waitBU04ReadyForever("# Ждём перезагрузку после SAVE...");
                     delay(3000);
                     flushBU04();
+
+                    // Шаг 3: выходим из AT-only режима
+                    Serial.println("# [TAG] Выход из AT-only режима (SETWORKMODE=0)...");
+                    flushBU04();
+                    bu04.print("AT+SETWORKMODE=0\r\n");
+                    bu04.print("AT+SAVE\r\n");
+                    waitBU04ReadyForever("# Ждём перезагрузку BU04...");
+                    delay(5000);
+                    flushBU04();
                     continue;  // проверим GETCFG на след. итерации
                 }
 
-                // BU04 вернулся к заводским — DW3000 не поднялся.
-                // Ждём и пробуем снова.
-                Serial.println("# DW3000 пока не готов, ждём 5 с…");
+                // SETCFG не применился — ждём и пробуем снова
+                Serial.println("# SETCFG не применился, ждём 5 с…");
                 delay(5000);
             }
 
