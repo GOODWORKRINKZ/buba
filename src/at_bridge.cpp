@@ -44,15 +44,36 @@ void setup() {
 
 void loop() {
     // Serial → BU04
+    // Если строка начинается с '!' — burst режим: разбиваем по ';' и шлём сразу
+    // Пример: !AT+SETCFG=1,0,1,1;AT+SAVE
     if (Serial.available()) {
-        String cmd = Serial.readStringUntil('\n');
-        cmd.trim();
+        String line = Serial.readStringUntil('\n');
+        line.trim();
         
-        if (cmd.length() > 0) {
+        if (line.length() == 0) return;
+        
+        if (line.startsWith("!")) {
+            // BURST режим — несколько команд через ';' без задержки
+            line = line.substring(1);
+            Serial.println("[BURST] " + line);
+            int start = 0;
+            while (true) {
+                int sep = line.indexOf(';', start);
+                String cmd = (sep >= 0) ? line.substring(start, sep) : line.substring(start);
+                cmd.trim();
+                if (cmd.length() > 0) {
+                    Serial.println("> " + cmd);
+                    bu04.print(cmd);
+                    bu04.print("\r\n");
+                }
+                if (sep < 0) break;
+                start = sep + 1;
+            }
+        } else {
+            // Обычный режим — одна команда
             Serial.print("> ");
-            Serial.println(cmd);
-            
-            bu04.print(cmd);
+            Serial.println(line);
+            bu04.print(line);
             bu04.print("\r\n");
         }
     }

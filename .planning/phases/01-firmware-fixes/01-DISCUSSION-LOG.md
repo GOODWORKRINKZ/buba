@@ -201,3 +201,27 @@ slot:0, addr:0000           ← s.s_pdoa.addr (PDOA anchor ID) = 0
 **AT+SAVE in workmode=1:** returns ERROR — aitcmd.lib does not know this command.
 
 **Root conclusion:** tag_start() does NOT call reset_DWIC() (confirmed from SDK comments and Project.htm call graph analysis). node_start() and all examples call reset_DWIC() first. This is by design — tag_start() expects DW3000 already initialized. The ONLY path to get DW3000 initialized for tag role: flash via SWD/JTAG with modified firmware, or use anchor role first then switch.
+
+---
+
+## 🔬 2026-06-08 17:17 — CRITICAL HARDWARE FIX: VDDAON Jumper
+
+**Problem:** DW3000 consistently failed to initialize with `INIT FAILED` error on both modules, regardless of firmware or AT commands.
+
+**Root Cause:** VDDAON pin on BU04 module was not connected to 3.3V power supply. VDDAON powers the always-on domain of DW3000 which is required for proper initialization sequence.
+
+**Solution:** Added jumper wire from 3.3V to VDDAON pin on BU04 module.
+
+**Result:** 
+- DW3000 now initializes successfully: `标签 v1.0 标签初始化成功 0212006150A2DD9A` (Tag v1.0 Tag initialization successful)
+- EUI-64 address: `02:12:00:61:50:A2:DD:9A`
+- Successfully configured as PDOA anchor: `ID:0, Role:1, CH:1, Rate:1`
+- Configuration saved to NVM: `基站初始化成功` (Anchor initialization successful)
+
+**Impact:** This hardware fix bypasses all ESP32 firmware issues. Direct AT command configuration through STM32 inside BU04 now works correctly.
+
+**Next Steps:** 
+1. Apply same VDDAON jumper fix to second module
+2. Configure second module as PDOA tag
+3. Test PDOA ranging between anchor and tag
+4. Document VDDAON connection in hardware setup guide
