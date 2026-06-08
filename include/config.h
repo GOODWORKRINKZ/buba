@@ -44,10 +44,11 @@
 #define BU04_RATE         1    // 6.8 Мбит/с (единственный вариант)
 #define BU04_GROUP        1    // группа для якорей (теги = 0)
 
-// ID: тег и anchor1 ДОЛЖНЫ иметь одинаковый ID (требование протокола TWR)
-#define BU04_ID_ANCHOR1   0
-#define BU04_ID_ANCHOR2   1
-#define BU04_ID_TAG       0    // = BU04_ID_ANCHOR1
+// ID: Экспериментально установлено — ID анкора и тега ДОЛЖНЫ различаться!
+// При одинаковых ID=0 GETDLIST пуст, UWB-пакеты игнорируются.
+#define BU04_ID_ANCHOR1   1
+#define BU04_ID_ANCHOR2   3
+#define BU04_ID_TAG       2
 
 // ----- Режим UWB -------------------------------------------
 // Источник: AT+SETUWBMODE (раздел 5 PDF)
