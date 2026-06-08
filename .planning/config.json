@@ -3,12 +3,25 @@
   "granularity": "standard",
   "parallelization": true,
   "commit_docs": true,
-  "model_profile": "balanced",
+  "model_profile": "inherit",
   "workflow": {
     "research": true,
     "plan_check": true,
     "verifier": true,
-    "nyquist_validation": true,
+    "nyquist_validation": false,
     "auto_advance": false
+  },
+  "model_overrides": {
+    "gsd-planner": "gpt-4o",
+    "gsd-executor": "deepseek-v4-pro",
+    "gsd-phase-researcher": "gpt-5-mini",
+    "gsd-verifier": "claude-haiku-4.5",
+    "gsd-plan-checker": "claude-haiku-4.5",
+    "gsd-codebase-mapper": "gpt-4o-mini",
+    "gsd-nyquist-auditor": "claude-haiku-4.5",
+    "gsd-debugger": "deepseek-v4-pro",
+    "gsd-project-researcher": "gpt-5-mini",
+    "gsd-research-synthesizer": "gpt-5-mini",
+    "gsd-doc-writer": "gpt-5-mini"
   }
 }
