@@ -8,8 +8,8 @@
 
 ## Current Position
 
-**Phase:** Not started — ready for Phase 1
-**Next action:** Run `/gsd-plan-phase 1` to start planning Phase 1 (Firmware Fixes)
+**Phase:** Phase 1 — Plan ready, ready for execution
+**Next action:** Run `/gsd-execute-phase 1` to start executing Phase 1 (Firmware Fixes)
 
 ---
 
@@ -17,7 +17,7 @@
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | Firmware Fixes (AT+PDOAOFF, auto AT+ADDTAG) | ⬜ Not started |
+| 1 | Firmware Fixes (AT+PDOAOFF, auto AT+ADDTAG) | 📋 Planned (PLAN.md ready) |
 | 2 | Python Visualizer (polar plot + CSV logger) | ⬜ Not started |
 | 3 | Calibration (empirical PDOA_OFFSET + RANGE_OFFSET) | ⬜ Not started |
 | 4 | Accuracy Verification (3×3 grid RMSE test) | ⬜ Not started |
@@ -41,4 +41,4 @@
 | 2026-05-15 | Robot following deferred to v2 | Must verify UWB accuracy first |
 
 ---
-*Last updated: 2026-05-15 after initialization*
+*Last updated: 2026-06-08 — Phase 1 PLAN.md created and verified (checker: PASS)*
