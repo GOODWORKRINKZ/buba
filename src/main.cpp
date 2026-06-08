@@ -70,6 +70,7 @@ static uint8_t  g_seq     = 0;
 static float    g_avgBuf[MOVING_AVG_SAMPLES] = {};
 static uint8_t  g_avgIdx  = 0;
 static bool     g_avgFull = false;
+static bool     g_inPdoa  = false;  // BU04 в PDOA-режиме (twr_pdoa_mode=1)
 
 // ── ANCHOR1: данные от ANCHOR2 ───────────────────────────────
 #if defined(ROLE_ANCHOR1)
@@ -226,8 +227,8 @@ static void configureBU04(uint8_t id, uint8_t role) {
 
         if (role == 0) {
             // ── TAG: PDOA-aware конфигурация ──────────────────────────
-            // В PDOA-режиме GETCFG возвращает "Dlist:N KList:N ..." — 
-            // совсем другой формат. Проверяем UWBMODE сначала.
+            // В PDOA-режиме GETCFG возвращает другой формат.
+            // Проверяем UWBMODE сначала.
 
             String uwbm = sendAT(AT_GETUWBMODE, 600);
             if (uwbm.indexOf("1") >= 0) {
@@ -236,26 +237,34 @@ static void configureBU04(uint8_t id, uint8_t role) {
                 return;
             }
 
-            // ── TWR-режим: простой SETCFG+SAVE бёрст ─────────────────
+            // ── TWR-режим: настраиваем PDOA ─────────────────────────
             // VDDAON fix: DW3000 теперь инициализируется нормально.
+            // Бурст: SETCFG + SETUWBMODE=1 + SAVE
             for (;;) {
                 String cur = sendAT(AT_GETCFG, 2000);
                 { int nl = cur.indexOf('\n'); Serial.printf("# GETCFG: %s\n", (nl > 0 ? cur.substring(0, nl) : cur).c_str()); }
 
                 if (cur.indexOf(wantId) >= 0 && cur.indexOf(wantRole) >= 0) {
-                    Serial.printf("# BU04 конфиг: id=%u role=%u\n", id, role);
-                    return;
+                    Serial.printf("# BU04 TWR конфиг: id=%u role=%u, переключаем в PDOA...\n", id, role);
+                    flushBU04();
+                    bu04.print("AT+SETUWBMODE=1\r\n");
+                    bu04.print("AT+SAVE\r\n");
+                    waitBU04ReadyForever("# Ждём перезагрузку BU04...");
+                    delay(5000);
+                    flushBU04();
+                    continue;  // проверим на след. итерации
                 }
 
-                Serial.println("# [TAG] SETCFG+SAVE бёрст...");
+                Serial.println("# [TAG] SETCFG+SETUWBMODE+SAVE бёрст...");
                 flushBU04();
                 bu04.print("AT+SETCFG=" + String(id) + ",0," +
                            String(BU04_CHANNEL) + "," + String(BU04_RATE) + "\r\n");
+                bu04.print("AT+SETUWBMODE=1\r\n");
                 bu04.print("AT+SAVE\r\n");
                 waitBU04ReadyForever("# Ждём перезагрузку BU04...");
-                delay(3000);
+                delay(5000);
                 flushBU04();
-                // Петля проверит GETCFG — если всё ок, выйдет
+                // Петля проверит GETCFG / UWBMODE — если всё ок, выйдет
             }
 
         } else {
@@ -380,20 +389,17 @@ static void initESPNow() {
 #endif  // ROLE_ANCHOR1 || ROLE_ANCHOR2
 
 // Регистрирует тег в BU04 через AT+GETDLIST / AT+ADDTAG / AT+SAVE.
-// Идемпотентна: если KList > 0 — тег уже зарегистрирован, ничего не делает (D-07).
-// Ждёт бесконечно, кормит WDT через delay(2000) (D-08).
+// Идемпотентна: если KList содержит тег — уже зарегистрирован, выходит (D-07).
+// Таймаут 15 попыток (30с), затем переконфигурация BU04 и ретрай.
 static void getdlistAndRegister() {
     // Проверяем, не зарегистрирован ли тег уже (idempotent guard, D-07)
+    // KList в PDOA-режиме возвращает JSON: [{"slot":"...","a64":"...",...}]
     {
         String klist = sendAT(AT_GETKLIST, 1000);
-        // "getklist TagNum:N" → если N > 0, тег уже есть
-        int idx = klist.indexOf("TagNum:");
-        if (idx >= 0) {
-            int n = klist.substring(idx + 7).toInt();
-            if (n > 0) {
-                Serial.printf("# Тег уже зарегистрирован (KList=%d), пропускаем AT+ADDTAG\n", n);
-                return;
-            }
+        // Ищем LongAddr (a64) в JSON — если есть, тег зарегистрирован
+        if (klist.indexOf("a64") >= 0 || klist.indexOf("LongAddr64") >= 0) {
+            Serial.printf("# Тег уже зарегистрирован: %s\n", klist.c_str());
+            return;
         }
     }
 
@@ -404,25 +410,35 @@ static void getdlistAndRegister() {
         Serial.printf("# Ожидание тега... [%d] попытка\n", attempt);
         String dlist = sendAT(AT_GETDLIST, 1500);
 
-        // Парсим LongAddr64 из ответа (формат: "LongAddr64:XXXXXXXXXXXXXXXX ...")
-        int la = dlist.indexOf("LongAddr64:");
+        // Парсим LongAddr из JSON: "a64":"XXXXXXXXXXXXXXXX" или "LongAddr64:XXXX..."
+        int la = dlist.indexOf("a64\":\"");
+        if (la < 0) la = dlist.indexOf("LongAddr64:");
         if (la >= 0) {
-            // Извлекаем 16 hex-символов после "LongAddr64:"
-            String rest = dlist.substring(la + 11);
-            rest.trim();
-            // Адрес — до первого пробела или конца строки
-            int sp = rest.indexOf(' ');
-            longAddr = (sp >= 0) ? rest.substring(0, sp) : rest.substring(0, 16);
+            int start = (dlist[la] == 'a') ? la + 6 : la + 11;
+            longAddr = dlist.substring(start, start + 16);
             longAddr.trim();
-            if (longAddr.length() >= 8) break;  // адрес найден
+            if (longAddr.length() >= 8) break;
         }
-        delay(2000);  // кормим WDT (D-08); vTaskDelay внутри сбрасывает TWDT
+
+        // Таймаут: после 15 попыток — переконфигурируем BU04 и пробуем снова
+        if (attempt >= 15) {
+            Serial.println("# GETDLIST пуст 30с — переконфигурация BU04...");
+            flushBU04();
+            bu04.print("AT+SETCFG=" + String(BU04_ID_ANCHOR1) + ",1," +
+                       String(BU04_CHANNEL) + "," + String(BU04_RATE) + "\r\n");
+            bu04.print("AT+SETUWBMODE=1\r\n");
+            bu04.print("AT+SAVE\r\n");
+            waitBU04ReadyForever("# Ждём перезагрузку BU04 после реконфига...");
+            delay(5000);
+            flushBU04();
+            Serial.println("# BU04 переконфигурирован, продолжаем ожидание...");
+            attempt = 0;  // сброс счётчика
+        }
+        delay(2000);
     }
     Serial.printf("# Тег обнаружен: LongAddr64=%s\n", longAddr.c_str());
 
     // Регистрируем тег (D-05)
-    // AT+ADDTAG=<LongAddr64>,<ShortAddr>,<MinRate>,<MaxRate>,<Mode>
-    // MinRate=1, MaxRate=64, Mode=0 — стандартные параметры PDOA
     char addtagCmd[64];
     snprintf(addtagCmd, sizeof(addtagCmd), "AT+ADDTAG=%s,%04X,1,64,0",
              longAddr.c_str(), (unsigned)TAG_SHORT_ADDR);
@@ -433,13 +449,9 @@ static void getdlistAndRegister() {
         Serial.printf("# AT+ADDTAG OK (тег %04X)\n", (unsigned)TAG_SHORT_ADDR);
     }
 
-    // Верификация (D-05)
-    String klist2 = sendAT(AT_GETKLIST, 1000);
-    Serial.printf("# GETKLIST: %s\n", klist2.c_str());
-
-    // Сохраняем в NVM и ждём перезагрузки BU04 (D-05, D-06, D-10)
+    // Сохраняем и ждём перезагрузки BU04 (D-05, D-06, D-10)
     Serial.println("# AT+SAVE → BU04 перезагружается...");
-    sendAT(AT_SAVE, 500);  // BU04 уходит на NVIC_SystemReset сразу
+    sendAT(AT_SAVE, 500);
     delay(500);
     waitBU04ReadyForever("# Ждём перезагрузку BU04 после AT+SAVE...");
     delay(3000);
@@ -604,17 +616,26 @@ void setup() {
 #elif defined(ROLE_TAG)
     Serial.println("# ========================================");
     Serial.println("# BU04 UWB – TAG (пользователь)");
+#if defined(PDOA_MODE)
+    Serial.println("# Режим: PDOA");
+    g_inPdoa = true;
+#else
+    Serial.println("# Режим: TWR");
     Serial.println("# CSV: TAG,seq,d_m,avg_m,ts_ms");
+#endif
     Serial.println("# ========================================");
     configureBU04(BU04_ID_TAG, /*role=*/0);
     {
+        // Проверяем, в каком режиме BU04 на самом деле
+        String uwbm = sendAT(AT_GETUWBMODE, 600);
+        g_inPdoa = (uwbm.indexOf("1") >= 0);
         String ver = sendAT("AT+GETVER", 500);
         ver.trim();
         Serial.println("# " + ver);
         String cfg = sendAT(AT_GETCFG, 1000);
         cfg.trim();
-        // AT+GETCFG в TWR: getcfg ID:X, Role:X, CH:X, Rate:X, Group:X
         Serial.println("# " + cfg);
+        Serial.printf("# PDOA mode: %s\n", g_inPdoa ? "YES" : "NO");
     }
 #endif
 
@@ -723,6 +744,23 @@ void loop() {
                           xcm  / 100.0f,
                           ycm  / 100.0f,
                           now);
+        }
+
+#elif defined(ROLE_TAG) && defined(PDOA_MODE)
+        // ── TAG PDOA: читаем вывод BU04 и ретранслируем ──────
+        {
+            String buf;
+            while (bu04.available()) {
+                char c = (char)bu04.read();
+                if (c == '\n') {
+                    buf.trim();
+                    if (buf.length() > 0)
+                        Serial.printf("TAG,%u,%s,%lu\n", g_seq, buf.c_str(), now);
+                    buf = "";
+                } else {
+                    buf += c;
+                }
+            }
         }
 
 #else  // TWR режим (ANCHOR1, ANCHOR2, TAG)
