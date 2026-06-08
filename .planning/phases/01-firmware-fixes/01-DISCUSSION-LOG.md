@@ -123,3 +123,49 @@ From SDK `deca_device.c`:
 - DW3000 needs ~5ms after reset to reach IDLE_RC state
 - PLL lock failure, PGF calibration failure can also cause INIT FAILED
 - Aitcmd.lib has internal retry loop — exact mechanism unknown (pre-compiled library)
+
+### 🔬 2026-06-08 16:15 — Deep SDK Analysis: AT Mode Architecture
+
+**Critical discovery from `main.c` (line 110):**
+```c
+while (app.pConfig->s.userConfig.nodeAddr == 0xFFFF) {
+    App_Module_Sys_Work_Mode_Event();  // AT command loop
+}
+```
+
+**This means:** BU04 stays in AT command loop ONLY while `nodeAddr == 0xFFFF`. Once `AT+SETCFG` sets nodeAddr, BU04 exits AT loop and calls `node_start()`/`tag_start()`.
+
+**From `cmd_fn.c` (line 79-141):**
+```c
+int f_setcfg(...) {
+    sys_para.param_Config.s.userConfig.nodeAddr = id;  // sets nodeAddr
+    // ...
+    if (role == 1) node_start();  // IMMEDIATELY exits AT loop
+    else tag_start();             // IMMEDIATELY exits AT loop
+}
+```
+
+**Conclusion: RAM-only SETCFG is IMPOSSIBLE.** SETCFG always triggers node_start()/tag_start() and exits AT mode. There is no way to set config in RAM without starting the UWB stack.
+
+**From `Generic.c` (line 162):**
+```c
+void App_Module_Sys_Work_Mode_Event() {
+    Sys_Work_Mode mode = (nodeAddr != 0xffff) ? WORK_DONE : CFG_ING;
+    App_Module_Sys_Deal_UART_CMD_Event(mode);  // processes AT commands
+    App_Modelu_Sys_Deal_IO_LED_Event(mode);
+}
+```
+
+**The ONLY way to stay in AT mode forever:** `AT+SETWORKMODE=1`
+- From `main.c` (line 140): `if (workmode == 1) { while(1) { App_Module_Sys_Work_Mode_Event(); } }`
+- This is "AT-only mode" — BU04 never calls node_start()/tag_start()
+- Used for tag configuration where tag_start() fails without reset_DWIC
+
+**Revised tag initialization strategy:**
+1. `AT+SETWORKMODE=1` → BU04 stays in AT loop forever
+2. `AT+SETCFG=id,0,ch,rate` → sets config in RAM, but workmode=1 prevents node_start()
+3. `AT+SAVE` → writes NVM + NVIC_SystemReset
+4. After reboot: workmode=1, nodeAddr=id, role=0 → stays in AT loop
+5. `AT+SETWORKMODE=0` → exits AT loop, calls tag_start() with DW3000 already initialized
+
+**This is the correct 2-phase strategy for tags.**
