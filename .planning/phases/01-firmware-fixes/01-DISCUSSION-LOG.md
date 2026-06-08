@@ -169,3 +169,35 @@ void App_Module_Sys_Work_Mode_Event() {
 5. `AT+SETWORKMODE=0` → exits AT loop, calls tag_start() with DW3000 already initialized
 
 **This is the correct 2-phase strategy for tags.**
+
+### 🔬 2026-06-08 17:00 — AT-bridge live investigation findings
+
+**Setup:** AT-bridge on tag device, direct AT commands from console.
+
+**Key observations from boot log:**
+```
+UWB Module 15:13:27 Jul 19 2024
+UWB Module V1.0.0
+UWB Module 1111 8 10 32   ← panID, numSlots, numTags, maxTags
+UWB Module flag:AAAA        ← NVM valid
+UWB Module start_count:87   ← factory test counter, not a bug
+UWB Module bit1:0..bit5:0   ← zero error flags, no HardFault
+rngOffset_mm:0, pdoaOffset_deg:0, motionfilter:1, user_cmd:0
+slot:0, addr:0000           ← s.s_pdoa.addr (PDOA anchor ID) = 0
+```
+
+**IIC Error is NORMAL:** No OLED/accelerometer on bare BU04 module (no dev-kit). I2C init fails silently and execution continues. NOT related to DW3000.
+
+**workmode response format:** "workmode: 1" followed by boot log digits creates "workmode: 17" artifact. Actual workmode = 1. AT-bridge reads everything together.
+
+**start_count = 87:** factory test, incremented on every valid boot. Normal for new module.
+
+**Two AT parsers confirmed:**
+- `cmd_fn.c` (workmode=0): handles AT+SETCFG, AT+GETCFG, AT+SAVE etc.
+- `aitcmd.lib` (workmode=1): handles only PDOA commands, NOT AT+SETCFG/AT+SAVE
+
+**AT+SETCFG confirmed deadlock:** SETCFG sets nodeAddr in RAM then immediately calls tag_start() → dwt_initialise() → INIT FAILED → while(1) → watchdog → reboot → NVM unchanged. SAVE never called.
+
+**AT+SAVE in workmode=1:** returns ERROR — aitcmd.lib does not know this command.
+
+**Root conclusion:** tag_start() does NOT call reset_DWIC() (confirmed from SDK comments and Project.htm call graph analysis). node_start() and all examples call reset_DWIC() first. This is by design — tag_start() expects DW3000 already initialized. The ONLY path to get DW3000 initialized for tag role: flash via SWD/JTAG with modified firmware, or use anchor role first then switch.
