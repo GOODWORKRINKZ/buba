@@ -431,14 +431,16 @@ def setup_polar_plot():
         ax.set_theta_direction(-1)
         ax.set_thetamin(-90)
         ax.set_thetamax(90)
-        ax.set_rmax(3.5)
+        ax.set_rmax(10.0)
         ax.set_title(cfg['title'], pad=12, fontsize=9, color=color, weight='bold')
 
-        # Tolerance rings (all plots)
+        # Tolerance rings (all plots) — 1/2/3/5/7/10m
         theta = np.linspace(-np.pi / 2, np.pi / 2, 100)
-        for r in [1.0, 2.0, 3.0]:
-            ax.plot(theta, [r] * 100, '--', color='grey', alpha=0.3, linewidth=0.7)
-            ax.fill_between(theta, r - 0.1, r + 0.1, color='grey', alpha=0.04)
+        ring_radii = [1.0, 2.0, 3.0, 5.0, 7.0, 10.0]
+        ring_alphas = [0.4, 0.35, 0.3, 0.2, 0.15, 0.1]
+        for r, alpha in zip(ring_radii, ring_alphas):
+            ax.plot(theta, [r] * 100, '--', color='grey', alpha=alpha, linewidth=0.6)
+            ax.fill_between(theta, r - 0.1, r + 0.1, color='grey', alpha=alpha * 0.12)
 
         # Scatter + Trail (plots 0,1,3)
         if idx != 2:
@@ -492,7 +494,7 @@ def compute_heatmap(points, n_bins=30):
 
     # Bin edges
     theta_edges = np.linspace(-np.pi / 2, np.pi / 2, n_bins + 1)
-    r_edges = np.linspace(0, 3.5, n_bins + 1)
+    r_edges = np.linspace(0, 10.0, n_bins + 1)
 
     hist, _, _ = np.histogram2d(angles, ranges,
                                 bins=[theta_edges, r_edges])
