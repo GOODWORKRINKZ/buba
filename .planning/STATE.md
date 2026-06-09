@@ -8,8 +8,8 @@
 
 ## Current Position
 
-**Phase:** Phase 1 — Plan ready, ready for execution
-**Next action:** Run `/gsd-execute-phase 1` to start executing Phase 1 (Firmware Fixes)
+**Phase:** Phase 2 — Context ready, ready for planning
+**Next action:** Run `/gsd-plan-phase 2` to create detailed plan, then `/gsd-execute-phase 2` to build
 
 ---
 
@@ -17,8 +17,8 @@
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | Firmware Fixes (AT+PDOAOFF, auto AT+ADDTAG) | � In Execution — Wave 1 code done, Wave 2 HW verification in progress |
-| 2 | Python Visualizer (polar plot + CSV logger) | ⬜ Not started |
+| 1 | Firmware Fixes (AT+PDOAOFF, auto AT+ADDTAG) | ✅ Completed — PDOA streaming verified, direct USB working |
+| 2 | Python Visualizer (polar plot + CSV logger) | 🔵 Context ready — decisions locked, ready for planning |
 | 3 | Calibration (empirical PDOA_OFFSET + RANGE_OFFSET) | ⬜ Not started |
 | 4 | Accuracy Verification (3×3 grid RMSE test) | ⬜ Not started |
 
