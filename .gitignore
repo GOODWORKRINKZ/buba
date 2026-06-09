@@ -6,3 +6,5 @@
 .vscode/ipch
 STM32F103-BU0x_SDK/
 __pycache__/
+logs/
+logs/
