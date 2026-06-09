@@ -7,12 +7,18 @@ measurements, displays live polar chart (range vs angle), and logs all
 data to CSV.
 
 Usage:
-    python3 tools/visualizer.py                    # auto-detect anchor
+    python3 tools/visualizer.py                    # auto-detect, 4-view dashboard
     python3 tools/visualizer.py --port /dev/ttyACM1  # manual port
     python3 tools/visualizer.py --list             # list available ports
-    python3 tools/visualizer.py --filter kalman    # Kalman smoothing
-    python3 tools/visualizer.py --filter median    # median filter (window 5)
-    python3 tools/visualizer.py --calibrate        # collect 100 samples, print offsets
+    python3 tools/visualizer.py --calibrate        # calibration mode
+
+4-View Dashboard:
+    Top-left:     Raw Scatter + Trail (unfiltered)
+    Top-right:    Kalman Filtered (smooth)
+    Bottom-left:  Density Heatmap (hot = more visits)
+    Bottom-right: Compare All (Raw + Kalman + Median overlaid)
+
+All views have tolerance rings (1/2/3m ±10cm) and LOST indicator.
 
 Formats supported:
     - Stock STM32 firmware: JSON with JS length prefix
@@ -218,77 +224,85 @@ def detect_format(line: str) -> str:
 #  Serial reader thread
 # ═══════════════════════════════════════════════════════════════
 
-def reader_thread(ser: serial.Serial, data_deque: deque, lock: threading.Lock,
-                  fmt: str, stop_event: threading.Event, stats: dict,
-                  filter_mode: str = 'kalman'):
+def reader_thread(ser: serial.Serial, deques: dict, locks: dict,
+                  fmt: str, stop_event: threading.Event, stats: dict):
     """
-    Daemon thread: read serial port, parse measurements, apply filter, push to deque.
+    Daemon thread: read serial, parse, apply all filters, push to 3 deques.
 
-    Args:
-        ser: Open serial port
-        data_deque: Thread-safe deque for filtered measurements
-        lock: threading.Lock for deque access
-        fmt: 'json' or 'csv'
-        stop_event: Set to stop the thread
-        stats: Shared dict with keys: received, skipped, errors,
-               last_packet_time, running, raw_range, raw_angle, filt_range, filt_angle
-        filter_mode: 'kalman', 'median', or 'none'
+    deques: {'raw': deque, 'kalman': deque, 'median': deque}
+    locks:  {'raw': Lock, 'kalman': Lock, 'median': Lock}
+
+    Raw gets unfiltered measurements.
+    Kalman gets Kalman-filtered measurements.
+    Median gets median-filtered measurements (window=5).
+    All three get outlier rejection applied.
     """
     parse_fn = parse_json_line if fmt == 'json' else parse_csv_line
 
-    # Initialize filters
-    range_filter = KalmanFilter1D(R=25.0, Q=0.1)
-    angle_filter = KalmanFilter1D(R=100.0, Q=0.5)
-    median_range = MedianFilter(window=5)
-    median_angle = MedianFilter(window=5)
+    # Filters
+    kf_range = KalmanFilter1D(R=25.0, Q=0.1)
+    kf_angle = KalmanFilter1D(R=100.0, Q=0.5)
+    med_range = MedianFilter(window=5)
+    med_angle = MedianFilter(window=5)
     outlier = OutlierRejector(max_jump_cm=50.0)
 
-    last_dt = 0.25  # assumed ~4 Hz
+    last_dt = 0.25
 
     while not stop_event.is_set():
         try:
             if ser.in_waiting:
-                raw = ser.read(ser.in_waiting)
-                text = raw.decode('utf-8', errors='replace')
+                raw_data = ser.read(ser.in_waiting)
+                text = raw_data.decode('utf-8', errors='replace')
                 for line in text.split('\n'):
                     line = line.strip()
                     if not line:
                         continue
                     m = parse_fn(line)
-                    if m:
-                        stats['received'] += 1
-                        now = time.time()
-                        dt = now - stats.get('last_raw_time', now)
-                        if 0.01 < dt < 2.0:
-                            last_dt = dt
-                        stats['last_raw_time'] = now
-                        stats['last_packet_time'] = now
-
-                        # Store raw values for calibration/stats
-                        stats['raw_range'] = m.range_cm
-                        stats['raw_angle'] = m.angle_deg
-
-                        # Outlier rejection on range only
-                        if not outlier.check(m.range_cm):
+                    if not m:
+                        if any(c in line for c in '{}[]'):
                             stats['skipped'] += 1
-                            continue
+                        continue
 
-                        # Apply filter
-                        if filter_mode == 'kalman':
-                            m.range_cm = range_filter.update(m.range_cm, last_dt)
-                            m.angle_deg = angle_filter.update(m.angle_deg, last_dt)
-                        elif filter_mode == 'median':
-                            m.range_cm = median_range.update(m.range_cm)
-                            m.angle_deg = median_angle.update(m.angle_deg)
-                        # 'none': no filtering
+                    stats['received'] += 1
+                    now = time.time()
+                    dt = now - stats.get('last_raw_time', now)
+                    if 0.01 < dt < 2.0:
+                        last_dt = dt
+                    stats['last_raw_time'] = now
+                    stats['last_packet_time'] = now
 
-                        stats['filt_range'] = m.range_cm
-                        stats['filt_angle'] = m.angle_deg
+                    raw_r, raw_a = m.range_cm, m.angle_deg
 
-                        with lock:
-                            data_deque.append(m)
-                    elif any(c in line for c in '{}[]'):
+                    # Outlier rejection on raw range
+                    if not outlier.check(raw_r):
                         stats['skipped'] += 1
+                        continue
+
+                    # ── Raw (no filter) ──
+                    m_raw = Measurement(
+                        timestamp=now, range_cm=raw_r, angle_deg=raw_a,
+                        seq=m.seq, raw_json=m.raw_json)
+                    with locks['raw']:
+                        deques['raw'].append(m_raw)
+
+                    # ── Kalman ──
+                    m_kal = Measurement(
+                        timestamp=now,
+                        range_cm=kf_range.update(raw_r, last_dt),
+                        angle_deg=kf_angle.update(raw_a, last_dt),
+                        seq=m.seq, raw_json=m.raw_json)
+                    with locks['kalman']:
+                        deques['kalman'].append(m_kal)
+
+                    # ── Median ──
+                    m_med = Measurement(
+                        timestamp=now,
+                        range_cm=med_range.update(raw_r),
+                        angle_deg=med_angle.update(raw_a),
+                        seq=m.seq, raw_json=m.raw_json)
+                    with locks['median']:
+                        deques['median'].append(m_med)
+
             else:
                 time.sleep(0.02)
         except (OSError, serial.SerialException):
@@ -375,101 +389,246 @@ def find_anchor_port(verbose: bool = True) -> str | None:
 
 def setup_polar_plot():
     """
-    Create polar plot figure with scatter artist, trail, tolerance rings,
-    and LOST indicator text.
+    Create 2×2 polar plot grid:
+
+    ┌─────────────────────┬─────────────────────┐
+    │ Raw Scatter + Trail │ Kalman Filtered     │
+    │ (red, fading trail) │ (blue, smooth)      │
+    ├─────────────────────┼─────────────────────┤
+    │ Density Heatmap     │ All Filters Overlay │
+    │ (hot = more visits) │ Raw+Kalman+Median   │
+    └─────────────────────┴─────────────────────┘
+
+    All four have tolerance rings (1/2/3m) and LOST indicator.
+
+    Keyboard shortcuts:
+      h — help overlay
+      q — quit
 
     Returns:
-        fig, ax, scatter, trail, lost_text
+        fig, axes (2×2), artists dict, view_state dict
     """
-    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
-    fig.canvas.manager.set_window_title('BU04 PDOA Visualizer')
+    fig, axes = plt.subplots(2, 2, subplot_kw={'projection': 'polar'},
+                             figsize=(13, 10))
+    fig.canvas.manager.set_window_title('BU04 PDOA — 4-View Dashboard')
 
-    # Configure polar axes
-    ax.set_theta_zero_location('N')    # 0° = north (forward from anchor)
-    ax.set_theta_direction(-1)         # clockwise
-    ax.set_thetamin(-90)
-    ax.set_thetamax(90)
-    ax.set_rmax(3.5)                   # max 3.5m range
-    ax.set_rlabel_position(135)
-    ax.set_title('BU04 PDOA — Live Range & Angle', pad=20, fontsize=10)
-
-    # Initial scatter (current position — big red dot)
-    scatter = ax.scatter([], [], s=80, c='red', zorder=5, label='Current')
-
-    # Trail scatter (fading history)
-    trail = ax.scatter([], [], s=20, c='blue', alpha=0.3, zorder=4, label='Trail')
-
-    # Tolerance rings at 1m, 2m, 3m with ±10cm shaded bands
-    ring_styles = [
-        (1.0, 'green',  '1 m'),
-        (2.0, 'blue',   '2 m'),
-        (3.0, 'orange', '3 m'),
+    configs = [
+        {'title': 'Raw Scatter + Trail',  'color': 'red',   'idx': 0},
+        {'title': 'Kalman Filtered',      'color': 'blue',  'idx': 1},
+        {'title': 'Density Heatmap',      'color': 'orange','idx': 2},
+        {'title': 'Compare: Raw+Kalman+Median', 'color': 'purple', 'idx': 3},
     ]
-    theta = np.linspace(-np.pi / 2, np.pi / 2, 100)
-    for r, color, label in ring_styles:
-        ax.plot(theta, [r] * 100, '--', color=color, alpha=0.5, linewidth=1)
-        ax.fill_between(theta, r - 0.1, r + 0.1, color=color, alpha=0.08)
-        ax.text(np.pi / 2.2, r, label, fontsize=7, color=color, alpha=0.7)
 
-    # LOST indicator (hidden initially, shown when no data >1 sec)
-    lost_text = ax.text(
-        0, 0, 'LOST',
-        fontsize=24, color='red', alpha=0,
-        ha='center', va='center', weight='bold', zorder=10
+    artists = {}
+
+    for cfg in configs:
+        idx = cfg['idx']
+        ax = axes.flat[idx]
+        color = cfg['color']
+
+        # Axes config
+        ax.set_theta_zero_location('N')
+        ax.set_theta_direction(-1)
+        ax.set_thetamin(-90)
+        ax.set_thetamax(90)
+        ax.set_rmax(3.5)
+        ax.set_title(cfg['title'], pad=12, fontsize=9, color=color, weight='bold')
+
+        # Tolerance rings (all plots)
+        theta = np.linspace(-np.pi / 2, np.pi / 2, 100)
+        for r in [1.0, 2.0, 3.0]:
+            ax.plot(theta, [r] * 100, '--', color='grey', alpha=0.3, linewidth=0.7)
+            ax.fill_between(theta, r - 0.1, r + 0.1, color='grey', alpha=0.04)
+
+        # Scatter + Trail (plots 0,1,3)
+        if idx != 2:
+            artists[f'scat_{idx}'] = ax.scatter(
+                [], [], s=70, c=color, zorder=5)
+            artists[f'trail_{idx}'] = ax.scatter(
+                [], [], s=12, c=color, alpha=0.2, zorder=4)
+
+        # Heatmap (plot 2) — we use pcolormesh updated each frame
+        if idx == 2:
+            # Pre-allocate mesh (will be updated in update_plot)
+            mesh = ax.pcolormesh(
+                np.array([[0]]), np.array([[0]]), np.array([[0]]),
+                cmap='hot', alpha=0.7, shading='auto', zorder=3
+            )
+            artists['heatmap_mesh'] = mesh
+            artists['heatmap_scat'] = ax.scatter(
+                [], [], s=15, c='white', alpha=0.6, zorder=5)
+
+        # Overlay lines for plot 3 (Kalman & Median separate)
+        if idx == 3:
+            artists['over_k_s'] = ax.scatter(
+                [], [], s=15, c='blue', alpha=0.4, zorder=3, marker='s')
+            artists['over_m_s'] = ax.scatter(
+                [], [], s=15, c='green', alpha=0.4, zorder=3, marker='^')
+
+        # LOST text
+        artists[f'lost_{idx}'] = ax.text(
+            0, 0, 'LOST', fontsize=16, color='red', alpha=0,
+            ha='center', va='center', weight='bold', zorder=10)
+
+    # Help overlay (plot 0, hidden)
+    help_text = axes.flat[0].text(
+        0, 1.5,
+        'h:help q:quit',
+        fontsize=7, color='grey', alpha=0.3, ha='center', va='center'
     )
+    artists['help_text'] = help_text
 
-    ax.legend(loc='upper right', fontsize=7)
+    fig.tight_layout(pad=2.5)
+    return fig, axes, artists
 
-    return fig, ax, scatter, trail, lost_text
 
+def compute_heatmap(points, n_bins=30):
+    """Compute 2D polar histogram for heatmap display."""
+    if len(points) < 5:
+        return None, None, None
 
-def update_plot(frame, data_deque, lock, scatter, trail, lost_text, stats):
-    """
-    FuncAnimation callback — updates scatter + trail + LOST from shared deque.
-
-    Called at ~10 Hz by matplotlib's animation timer.
-    """
-    with lock:
-        points = list(data_deque) if data_deque else []
-
-    if not points:
-        # No data at all — check if we've lost signal
-        if time.time() - stats['last_packet_time'] > 1.0:
-            lost_text.set_alpha(1.0)
-        return [scatter, trail, lost_text]
-
-    lost_text.set_alpha(0)  # data flowing — hide LOST
-
-    # Convert to polar coordinates
     angles = [np.radians(m.angle_deg) for m in points]
     ranges = [m.range_cm / 100.0 for m in points]
 
-    # Current position = last point (big red dot)
-    scatter.set_offsets(np.c_[angles[-1:], ranges[-1:]])
-    scatter.set_alpha(1.0)
+    # Bin edges
+    theta_edges = np.linspace(-np.pi / 2, np.pi / 2, n_bins + 1)
+    r_edges = np.linspace(0, 3.5, n_bins + 1)
 
-    # Trail = last 200 points with fading alpha
-    trail_n = min(len(angles), 200)
-    trail_angles = angles[-trail_n:]
-    trail_ranges = ranges[-trail_n:]
-    trail.set_offsets(np.c_[trail_angles, trail_ranges])
+    hist, _, _ = np.histogram2d(angles, ranges,
+                                bins=[theta_edges, r_edges])
+    # Smooth slightly
+    hist = hist.T  # transpose so rows=r, cols=theta
 
-    # Update title with statistics
-    stat_parts = [
-        f"Rx: {stats['received']}",
-        f"Skip: {stats['skipped']}",
-    ]
-    last = points[-1]
-    raw_r = stats.get('raw_range', last.range_cm)
-    raw_a = stats.get('raw_angle', last.angle_deg)
-    stat_parts.append(f"Raw: D={raw_r:.0f}cm P={raw_a:.0f}°")
-    stat_parts.append(f"Flt: D={last.range_cm:.0f}cm P={last.angle_deg:.0f}°")
-    scatter.axes.set_title(
-        'BU04 PDOA — ' + ' | '.join(stat_parts),
-        pad=20, fontsize=9
+    theta_centers = (theta_edges[:-1] + theta_edges[1:]) / 2
+    r_centers = (r_edges[:-1] + r_edges[1:]) / 2
+    T, R = np.meshgrid(theta_centers, r_centers)
+
+    return T, R, hist
+
+
+def update_plot(frame, data_queues, locks, artists, stats, fig):
+    """
+    Update all 4 subplots. data_queues is a dict with keys:
+    'raw', 'kalman', 'median' — each a deque of Measurement.
+    """
+    # Gather data under locks
+    pts = {}
+    for key in ('raw', 'kalman', 'median'):
+        with locks[key]:
+            pts[key] = list(data_queues[key]) if data_queues[key] else []
+
+    raw = pts['raw']
+    kal = pts['kalman']
+    med = pts['median']
+
+    all_pts = raw  # primary is raw
+
+    # ── Plot 0: Raw Scatter + Trail ──────────────────────
+    _draw_scatter_trail(artists, 0, raw, 'red')
+
+    # ── Plot 1: Kalman Filtered ──────────────────────────
+    _draw_scatter_trail(artists, 1, kal, 'blue')
+
+    # ── Plot 2: Density Heatmap ──────────────────────────
+    _draw_heatmap(artists, raw, fig.axes[2])
+
+    # ── Plot 3: Overlay Comparison ───────────────────────
+    _draw_scatter_trail(artists, 3, raw, 'red')
+    _draw_overlay(artists, kal, med)
+
+    # ── LOST indicators ──────────────────────────────────
+    for idx in range(4):
+        lost = artists[f'lost_{idx}']
+        if not all_pts and time.time() - stats['last_packet_time'] > 1.0:
+            lost.set_alpha(1.0)
+        else:
+            lost.set_alpha(0)
+
+    # ── Title bar ────────────────────────────────────────
+    r_raw = raw[-1].range_cm if raw else 0
+    a_raw = raw[-1].angle_deg if raw else 0
+    r_kal = kal[-1].range_cm if kal else 0
+    a_kal = kal[-1].angle_deg if kal else 0
+    r_med = med[-1].range_cm if med else 0
+    a_med = med[-1].angle_deg if med else 0
+
+    fig.suptitle(
+        f'Rx:{stats["received"]} Skip:{stats["skipped"]} | '
+        f'Raw: {r_raw:.0f}cm {a_raw:.0f}° | '
+        f'Kalman: {r_kal:.0f}cm {a_kal:.0f}° | '
+        f'Median: {r_med:.0f}cm {a_med:.0f}°',
+        fontsize=9, y=0.995
     )
 
-    return [scatter, trail, lost_text]
+    return list(artists.values())
+
+
+def _draw_scatter_trail(artists, idx, points, color):
+    """Draw scatter point + fading trail for one subplot."""
+    scat = artists.get(f'scat_{idx}')
+    trail = artists.get(f'trail_{idx}')
+    if scat is None or trail is None:
+        return
+
+    if not points:
+        scat.set_offsets(np.empty((0, 2)))
+        trail.set_offsets(np.empty((0, 2)))
+        return
+
+    angles = [np.radians(m.angle_deg) for m in points]
+    ranges = [m.range_cm / 100.0 for m in points]
+
+    scat.set_offsets(np.c_[angles[-1:], ranges[-1:]])
+    scat.set_alpha(1.0)
+
+    tn = min(len(angles), 200)
+    trail.set_offsets(np.c_[angles[-tn:], ranges[-tn:]])
+
+
+def _draw_heatmap(artists, points, ax):
+    """Draw density heatmap for plot 2."""
+    mesh = artists.get('heatmap_mesh')
+    hscat = artists.get('heatmap_scat')
+
+    # Clear old mesh
+    if mesh is not None:
+        mesh.remove()
+        artists['heatmap_mesh'] = None
+
+    if not points or len(points) < 5:
+        if hscat:
+            hscat.set_offsets(np.empty((0, 2)))
+        return
+
+    T, R, hist = compute_heatmap(points, n_bins=25)
+    if T is None:
+        return
+
+    # Draw new mesh
+    mesh = ax.pcolormesh(T, R, hist, cmap='hot', alpha=0.7,
+                         shading='auto', zorder=3)
+    artists['heatmap_mesh'] = mesh
+
+    # Overlay recent points
+    angles = [np.radians(m.angle_deg) for m in points[-50:]]
+    ranges = [m.range_cm / 100.0 for m in points[-50:]]
+    if hscat:
+        hscat.set_offsets(np.c_[angles, ranges])
+
+
+def _draw_overlay(artists, kalman_pts, median_pts):
+    """Draw Kalman and Median as separate markers on overlay plot."""
+    for key, pts, marker in [('over_k_s', kalman_pts, 's'),
+                              ('over_m_s', median_pts, '^')]:
+        artist = artists.get(key)
+        if artist is None:
+            continue
+        if pts:
+            a = [np.radians(m.angle_deg) for m in pts[-200:]]
+            r = [m.range_cm / 100.0 for m in pts[-200:]]
+            artist.set_offsets(np.c_[a, r])
+        else:
+            artist.set_offsets(np.empty((0, 2)))
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -543,13 +702,8 @@ def parse_args():
         help='List available ports and exit'
     )
     ap.add_argument(
-        '--filter', '-f', choices=['kalman', 'median', 'none'],
-        default='kalman',
-        help='Filter mode: kalman (default), median (window 5), none'
-    )
-    ap.add_argument(
         '--calibrate', '-c', action='store_true',
-        help='Calibration mode: collect 100 samples at stationary position, print recommended PDOAOFF/RNGOFF'
+        help='Calibration mode: collect 100 samples, print recommended AT+PDOAOFF/AT+RNGOFF'
     )
     return ap.parse_args()
 
@@ -608,9 +762,17 @@ def main():
     fmt_name = 'stock STM32 JSON' if fmt == 'json' else 'ESP32 CSV'
     print(f"Format: {fmt.upper()} ({fmt_name})")
 
-    # Shared state between threads
-    data_deque = deque(maxlen=500)
-    lock = threading.Lock()
+    # Shared state — three deques for three filter modes
+    deques = {
+        'raw': deque(maxlen=500),
+        'kalman': deque(maxlen=500),
+        'median': deque(maxlen=500),
+    }
+    locks = {
+        'raw': threading.Lock(),
+        'kalman': threading.Lock(),
+        'median': threading.Lock(),
+    }
     stop_event = threading.Event()
     stats = {
         'received': 0,
@@ -618,10 +780,6 @@ def main():
         'errors': 0,
         'last_packet_time': time.time(),
         'last_raw_time': time.time(),
-        'raw_range': 0.0,
-        'raw_angle': 0.0,
-        'filt_range': 0.0,
-        'filt_angle': 0.0,
         'running': True,
     }
 
@@ -639,13 +797,13 @@ def main():
         print("Place the tag at a KNOWN position and keep it STILL.")
         print("Example: 1.00 m directly in front of anchor (0°)")
         print()
-        print("Collecting 100 samples...")
+        print("Collecting 100 raw samples...")
         print()
 
-        # Start reader without plot
+        # Start reader
         reader = threading.Thread(
             target=reader_thread,
-            args=(ser, data_deque, lock, fmt, stop_event, stats, 'none'),
+            args=(ser, deques, locks, fmt, stop_event, stats),
             daemon=True, name='serial-reader'
         )
         reader.start()
@@ -654,14 +812,13 @@ def main():
         samples_r = []
         samples_a = []
         while len(samples_r) < 100:
-            with lock:
-                items = list(data_deque)
-            for m in items:
+            with locks['raw']:
+                items = list(deques['raw'])
+            for m in items[len(samples_r):]:
                 if len(samples_r) >= 100:
                     break
                 samples_r.append(m.range_cm)
                 samples_a.append(m.angle_deg)
-                # Progress
                 n = len(samples_r)
                 if n % 10 == 0:
                     print(f"\r  [{n}/100] D={m.range_cm:.0f}cm P={m.angle_deg:.0f}°", end='', flush=True)
@@ -671,7 +828,6 @@ def main():
         ser.close()
         print()
 
-        # Compute statistics
         import statistics
         mean_r = statistics.mean(samples_r)
         mean_a = statistics.mean(samples_a)
@@ -686,67 +842,54 @@ def main():
         print(f"  Range:         mean={mean_r:.1f} cm  stdev={stdev_r:.1f} cm")
         print(f"  Angle:         mean={mean_a:.1f} °    stdev={stdev_a:.1f} °")
         print()
-        print("  Now measure the TRUE distance and angle with a ruler.")
-        print("  Then apply corrections:")
+        print("  Measure TRUE distance/angle with a ruler, then:")
         print()
-        print(f"  AT+RNGOFF={-int(mean_r - 100):d}     # if true distance = 100 cm")
-        print(f"  AT+PDOAOFF={-int(mean_a):d}          # if true angle = 0°")
-        print()
-        print("  Example for true distance = 100 cm, true angle = 0°:")
         rngoff = 100 - int(mean_r)
         pdoaoff = -int(mean_a)
-        print(f"    AT+RNGOFF={rngoff}")
-        print(f"    AT+PDOAOFF={pdoaoff}")
-        print(f"    AT+SAVE")
+        print(f"  AT+RNGOFF={rngoff}       # if true distance = 100 cm")
+        print(f"  AT+PDOAOFF={pdoaoff}     # if true angle = 0°")
+        print(f"  AT+SAVE")
         print()
-        print("  Or set values in include/config.h:")
+        print(f"  Or in include/config.h:")
         print(f"    #define RANGE_OFFSET_CM  {rngoff}")
         print(f"    #define PDOA_OFFSET_DEG  {pdoaoff}")
         print()
         return
 
     # ── Normal visualization mode ─────────────────────────
-    # Start reader thread
     reader = threading.Thread(
         target=reader_thread,
-        args=(ser, data_deque, lock, fmt, stop_event, stats, args.filter),
+        args=(ser, deques, locks, fmt, stop_event, stats),
         daemon=True, name='serial-reader'
     )
     reader.start()
 
-    # Start CSV logger thread
+    # CSV logger — logs raw data
     csv_thread = threading.Thread(
         target=csv_logger_thread,
-        args=(data_deque, lock, stop_event, csv_path),
-        daemon=True,
-        name='csv-logger'
+        args=(deques['raw'], locks['raw'], stop_event, csv_path),
+        daemon=True, name='csv-logger'
     )
     csv_thread.start()
 
-    # Setup polar plot
-    print("Starting polar plot (close window or Ctrl+C to exit)...")
-    fig, ax, scatter, trail, lost_text = setup_polar_plot()
+    # Setup 4-view dashboard
+    print("Starting 4-view dashboard (close window or Ctrl+C to exit)...")
+    fig, axes, artists = setup_polar_plot()
 
-    # FuncAnimation at 10 Hz (100 ms interval)
     ani = FuncAnimation(
         fig, update_plot,
-        fargs=(data_deque, lock, scatter, trail, lost_text, stats),
+        fargs=(deques, locks, artists, stats, fig),
         interval=100,
         blit=False,
         cache_frame_data=False,
     )
 
     def on_close(event=None):
-        """Graceful shutdown on window close or Ctrl+C."""
         print("\nShutting down...")
         stop_event.set()
         ser.close()
         print(f"CSV log: {csv_path}")
-        print(
-            f"Stats: {stats['received']} received, "
-            f"{stats['skipped']} skipped, "
-            f"{stats['errors']} errors"
-        )
+        print(f"Stats: {stats['received']} rx, {stats['skipped']} skip, {stats['errors']} err")
 
     fig.canvas.mpl_connect('close_event', on_close)
 
