@@ -225,3 +225,117 @@ slot:0, addr:0000           ← s.s_pdoa.addr (PDOA anchor ID) = 0
 2. Configure second module as PDOA tag
 3. Test PDOA ranging between anchor and tag
 4. Document VDDAON connection in hardware setup guide
+
+---
+
+## ✅ 2026-06-09 — PDOA SYSTEM WORKING! Direct USB + Utility Reverse Engineering
+
+### Direct USB Connection (PA11/PA12)
+
+**Discovery:** BU04 module can be connected directly to PC via USB through STM32F103 pins PA11 (USB_DM) and PA12 (USB_DP). The stock firmware includes USB CDC (Virtual COM Port) — appears as `0483:5740 STMicroelectronics Virtual COM Port`.
+
+**Soldering:** PA11 (D-), PA12 (D+), GND, and 3.3V from USB cable to BU04 module pins.
+
+**Key distinction:** Direct USB CDC has NO `>` echo prefix. ESP32 at_bridge HAS `> AT+...` echo. This is the reliable way to identify which port is which.
+
+**⚠️ Pitfall:** `AT+RST` (software reset via NVIC_SystemReset) kills USB CDC — STM32 reboots but USB doesn't re-enumerate. Requires physical USB power-cycle (unplug/replug). Use `AT+SAVE` (which auto-reboots via NVIC_SystemReset too) sparingly on direct USB modules.
+
+### Ai_Thinker_PDOA_V1_0_1 Utility Reverse Engineering
+
+**Source:** Serial port capture (SUDT AccessPort log) from working Windows session.
+
+**Exact initialization sequence used by official utility:**
+
+| # | Time | Command | Response |
+|---|------|---------|----------|
+| 1 | 0.0s | `AT+DECA$` | `JS008D{"Info":{"Device":"PDOA Node",...}}` |
+| 2 | 1.1s | `AT+GETKLIST` | `{"KList":[]}` |
+| 3 | 2.0s | Poll: `AT+GETDLIST` + `AT+GETKLIST` | Both empty |
+| 4 | ~18s | (spontaneous) | `JS001D{"NewTag":"043400086DD3657B"}` ← **auto-discovery!** |
+| 5 | 18.2s | `AT+ADDTAG=043400086dd3657b,657b,0001,64,00` | `JS0064{"TagAdded":{...}}` |
+| 6 | 18.3s+ | (streaming) | `{"TWR":{"a16":"657B","R":0,"D":121,"P":4,...}}` every ~100ms |
+
+**Key insight:** The utility does NOT send `AT+PDOASETCFG` at all! It relies on:
+1. Anchor being pre-configured (PAN ID, AncID saved in flash)
+2. Anchor auto-discovers tags via UWB beacon/response
+3. Utility just polls `AT+GETDLIST` and adds discovered tags via `AT+ADDTAG`
+4. After ADDTAG, PDOA streaming starts automatically
+
+**AT+ADDTAG format:** `AT+ADDTAG=<addr64_hex>,<addr16_hex>,<fast_rate>,64,<mode>`
+- addr64: 16-char lowercase hex (e.g., `043400086dd3657b`)
+- addr16: 4-char lowercase hex = last 4 chars of addr64 (e.g., `657b`)
+- fast_rate: `0001` (= 1, minimum refresh interval)
+- 64: fixed (maximum refresh interval)
+- mode: `00` (= 0, tag mode)
+
+### PAN ID Decimal Trap
+
+**From `cmd_fn.c`:** `panID = atoi(argv[2])` — PAN ID is parsed as **decimal** integer, but DISPLAYED as hex (`%04X`).
+
+| Input | Stored | Display | Correct? |
+|-------|--------|---------|----------|
+| `1111` | 1111₁₀ = 0x0457 | `Net:0457` | ❌ Wrong! |
+| `4369` | 4369₁₀ = 0x1111 | `Net:1111` | ✅ Correct! |
+
+**Correct command:** `AT+PDOASETCFG=1,1,4369,1,100,1,0` → PAN ID = 0x1111
+
+### Final Working Configuration (2026-06-09)
+
+**Port mapping:**
+| Port | Path | Role | ID | FW |
+|------|------|------|----|----|
+| `/dev/ttyACM1` | BU04 direct USB (PA11/12) | ⚓ ANCHOR | 1 | Stock STM32 PDOA |
+| `/dev/ttyACM0` | ESP32-C3 + BU04 | 🏷 TAG | 2 | at_bridge + Stock STM32 PDOA |
+
+**Anchor config:**
+```
+GETCFG:    ID:1, Role:1, CH:1, Rate:1
+PDOAGETCFG: Dlist:1 KList:1 Net:1111 AncID:1 Rate:100 Filter:1 UserCmd:0
+UWBMODE:   twr_pdoa_mode: 1
+```
+
+**Tag config:**
+```
+GETCFG:    ID:2, Role:0, CH:1, Rate:1
+PDOAGETCFG: Net:1111 AncID:65535 (default, not needed for tag)
+UWBMODE:   twr_pdoa_mode: 1
+```
+
+**Tag address:** EUI-64 = `043400086DD3657B`, Short = `657B`
+
+### PDOA Performance Results
+
+```
+Sample measurements (10 sec window, tag at ~135cm):
+  D=136cm P=0°    D=136cm P=6°    D=135cm P=32°
+  D=137cm P=19°   D=136cm P=7°    D=138cm P=17°
+  ...
+  41 samples / 10 sec ≈ 4.1 Hz update rate
+  Distance stability: ±5cm around 135cm
+  Angle range: -1° to +38° (tag moving in front of anchor)
+```
+
+### ESP32 Firmware Status
+
+**Anchor firmware (`anchor1_pdoa`):** NOT NEEDED for direct USB setup. Stock STM32 firmware handles PDOA natively. ESP32-C3 only needed for UART bridge.
+
+**Tag firmware (`tag`):** Partially working. Tag BU04 can be configured via AT commands through ESP32 at_bridge. The ESP32 `configureBU04()` function still has INIT FAILED retry issues, but bypassed by direct AT configuration.
+
+**at_bridge firmware:** WORKING ✅. Successfully relays AT commands from USB Serial → BU04 UART and back. Useful as a "remote control" for the tag BU04.
+
+### Key Files Modified This Session
+
+| File | Change |
+|------|--------|
+| `scripts/bu04_terminal.py` | NEW — Interactive AT command terminal for direct USB BU04 |
+| `.planning/phases/01-firmware-fixes/01-DISCUSSION-LOG.md` | This entry |
+
+### Lessons Learned
+
+1. **Direct USB beats ESP32 for configuration.** Stock STM32 firmware is reliable; ESP32 firmware adds unnecessary complexity for basic PDOA operation.
+2. **Always use `AT+DECA$` first** to verify PDOA node is alive and get device info.
+3. **Wait for auto-discovery.** Tag appears in DList within 2-18 seconds after anchor boot — no special trigger needed.
+4. **AT+RST = USB death.** On direct-USB modules, use physical power cycle instead.
+5. **PAN ID is decimal in, hex out.** `atoi()` parses as decimal; display uses `%04X`.
+6. **VDDAON jumper is mandatory.** Both modules need it for DW3000 to initialize.
+7. **IIC Error is noise.** Ignore `IIC Error` messages — no OLED/accelerometer on bare BU04.

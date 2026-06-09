@@ -1,7 +1,8 @@
 # Phase 1: Firmware Fixes — Context
 
 **Gathered:** 2026-05-15
-**Status:** Ready for planning
+**Updated:** 2026-06-09 (PDOA working, direct USB verified)
+**Status:** ✅ COMPLETED — PDOA streaming verified on hardware
 
 <domain>
 ## Phase Boundary
@@ -91,3 +92,40 @@ Flash both ESP32-C3 devices (anchor in `anchor1_pdoa` mode, tag in `tag` mode), 
 - Multiple tag support (explicitly out of scope v1)
 
 </deferred>
+
+<final_results date="2026-06-09">
+
+## ✅ PDOA System Verified Working
+
+### Hardware Setup
+- **Anchor:** BU04 direct USB via PA11/PA12 (STM32F103 USB CDC, VID:0483 PID:5740)
+- **Tag:** BU04 via ESP32-C3 at_bridge (UART PA2/PA3)
+- **Both modules:** VDDAON jumper to 3.3V (required for DW3000 init)
+
+### Configuration
+| Parameter | Anchor | Tag |
+|-----------|--------|-----|
+| Port | `/dev/ttyACM1` (direct USB) | `/dev/ttyACM0` (ESP32) |
+| GETCFG | ID:1, Role:1, CH:1, Rate:1 | ID:2, Role:0, CH:1, Rate:1 |
+| PDOA | Net:1111 AncID:1 | Net:1111 |
+| UWB Mode | PDOA (1) | PDOA (1) |
+| Tag EUI-64 | — | 043400086DD3657B |
+| Tag Short | — | 657B |
+
+### Verified Initialization Sequence (from Ai_Thinker_PDOA utility)
+1. `AT+DECA$` → confirms PDOA Node, DW3000 C0
+2. Wait ~2-18 sec for auto-discovery → `{"NewTag":"043400086DD3657B"}`
+3. `AT+ADDTAG=043400086dd3657b,657b,1,64,0` → tag added to KList
+4. PDOA stream starts automatically: `{"TWR":{"D":136,"P":4,...}}` @ ~4 Hz
+
+### Performance
+- Distance: 132-141 cm (measured at ~135 cm true distance)
+- Angle: -1° to +38° (tag moved in front of anchor)
+- Update rate: ~4.1 Hz (100 measurements in 24 sec)
+- Stability: ±5 cm range variation
+
+### Key Scripts
+- `scripts/bu04_terminal.py` — Interactive AT command terminal for BU04
+- `scripts/dual_monitor.py` — Dual-port serial monitor (anchor + tag)
+
+</final_results>

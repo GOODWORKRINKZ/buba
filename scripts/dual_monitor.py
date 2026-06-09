@@ -57,8 +57,8 @@ def main():
         anchor_port = sys.argv[1]
         tag_port = sys.argv[2]
     else:
-        anchor_port = '/dev/ttyACM1'
-        tag_port = '/dev/ttyACM3'
+        anchor_port = '/dev/ttyACM0'
+        tag_port = '/dev/ttyACM1'
     
     baud = 115200
     
