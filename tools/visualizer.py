@@ -10,7 +10,9 @@ Usage:
     python3 tools/visualizer.py                    # auto-detect anchor
     python3 tools/visualizer.py --port /dev/ttyACM1  # manual port
     python3 tools/visualizer.py --list             # list available ports
-    python3 tools/visualizer.py --baud 115200      # custom baud rate
+    python3 tools/visualizer.py --filter kalman    # Kalman smoothing
+    python3 tools/visualizer.py --filter median    # median filter (window 5)
+    python3 tools/visualizer.py --calibrate        # collect 100 samples, print offsets
 
 Formats supported:
     - Stock STM32 firmware: JSON with JS length prefix
@@ -52,6 +54,105 @@ class Measurement:
     angle_deg: float          # PDOA angle in degrees
     seq: int = 0              # sequence number (R field in JSON)
     raw_json: str = ""        # original line from BU04
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Filters — Kalman, Median, Outlier rejection
+# ═══════════════════════════════════════════════════════════════
+
+class KalmanFilter1D:
+    """
+    Simple 1D Kalman filter for range or angle smoothing.
+
+    State: [value, velocity]
+    Measurement: value only
+
+    Tuned for BU04 PDOA at ~4 Hz update rate.
+    Default R (measurement noise) matches typical PDOA variance.
+    """
+
+    def __init__(self, R: float = 25.0, Q: float = 0.1):
+        """
+        Args:
+            R: Measurement noise covariance (higher = trust measurements less)
+            Q: Process noise covariance (higher = trust model less)
+        """
+        self.x = np.zeros(2)       # state: [value, velocity]
+        self.P = np.eye(2) * 100   # initial uncertainty (high = fast convergence)
+        self.F = np.array([[1, 1], [0, 1]])        # state transition (constant velocity)
+        self.H = np.array([[1, 0]])                 # measurement function (position only)
+        self.R = np.array([[R]])                    # measurement noise
+        self.Q = np.array([[Q/4, Q/2], [Q/2, Q]])  # process noise
+        self.initialized = False
+
+    def update(self, z: float, dt: float = 0.25) -> float:
+        """
+        Update filter with new measurement.
+
+        Args:
+            z: New measurement value
+            dt: Time since last update (seconds)
+
+        Returns:
+            Filtered value
+        """
+        if not self.initialized:
+            self.x[0] = z
+            self.x[1] = 0
+            self.initialized = True
+            return z
+
+        # Update transition matrix with actual dt
+        self.F[0, 1] = dt
+
+        # Predict
+        x_pred = self.F @ self.x
+        P_pred = self.F @ self.P @ self.F.T + self.Q
+
+        # Update
+        y = z - self.H @ x_pred            # innovation
+        S = self.H @ P_pred @ self.H.T + self.R  # innovation covariance
+        K = P_pred @ self.H.T / S[0, 0]    # Kalman gain
+
+        self.x = x_pred + K.flatten() * y
+        self.P = P_pred - np.outer(K, self.H @ P_pred)
+
+        return float(self.x[0])
+
+
+class MedianFilter:
+    """Sliding window median filter."""
+
+    def __init__(self, window: int = 5):
+        self.window = window
+        self.buffer = deque(maxlen=window)
+
+    def update(self, value: float) -> float:
+        self.buffer.append(value)
+        if len(self.buffer) < 2:
+            return value
+        return float(np.median(list(self.buffer)))
+
+
+class OutlierRejector:
+    """Reject measurements that jump too far from the running average."""
+
+    def __init__(self, max_jump_cm: float = 50.0, warmup: int = 5):
+        self.max_jump = max_jump_cm
+        self.warmup = warmup
+        self.last_valid: float | None = None
+        self.count = 0
+
+    def check(self, value: float) -> bool:
+        """Return True if value passes outlier check."""
+        self.count += 1
+        if self.count <= self.warmup or self.last_valid is None:
+            self.last_valid = value
+            return True
+        if abs(value - self.last_valid) > self.max_jump:
+            return False
+        self.last_valid = value
+        return True
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -118,20 +219,31 @@ def detect_format(line: str) -> str:
 # ═══════════════════════════════════════════════════════════════
 
 def reader_thread(ser: serial.Serial, data_deque: deque, lock: threading.Lock,
-                  fmt: str, stop_event: threading.Event, stats: dict):
+                  fmt: str, stop_event: threading.Event, stats: dict,
+                  filter_mode: str = 'kalman'):
     """
-    Daemon thread: read serial port, parse measurements, push to deque.
+    Daemon thread: read serial port, parse measurements, apply filter, push to deque.
 
     Args:
         ser: Open serial port
-        data_deque: Thread-safe deque for measurements
+        data_deque: Thread-safe deque for filtered measurements
         lock: threading.Lock for deque access
         fmt: 'json' or 'csv'
         stop_event: Set to stop the thread
         stats: Shared dict with keys: received, skipped, errors,
-               last_packet_time, running
+               last_packet_time, running, raw_range, raw_angle, filt_range, filt_angle
+        filter_mode: 'kalman', 'median', or 'none'
     """
     parse_fn = parse_json_line if fmt == 'json' else parse_csv_line
+
+    # Initialize filters
+    range_filter = KalmanFilter1D(R=25.0, Q=0.1)
+    angle_filter = KalmanFilter1D(R=100.0, Q=0.5)
+    median_range = MedianFilter(window=5)
+    median_angle = MedianFilter(window=5)
+    outlier = OutlierRejector(max_jump_cm=50.0)
+
+    last_dt = 0.25  # assumed ~4 Hz
 
     while not stop_event.is_set():
         try:
@@ -144,12 +256,38 @@ def reader_thread(ser: serial.Serial, data_deque: deque, lock: threading.Lock,
                         continue
                     m = parse_fn(line)
                     if m:
+                        stats['received'] += 1
+                        now = time.time()
+                        dt = now - stats.get('last_raw_time', now)
+                        if 0.01 < dt < 2.0:
+                            last_dt = dt
+                        stats['last_raw_time'] = now
+                        stats['last_packet_time'] = now
+
+                        # Store raw values for calibration/stats
+                        stats['raw_range'] = m.range_cm
+                        stats['raw_angle'] = m.angle_deg
+
+                        # Outlier rejection on range only
+                        if not outlier.check(m.range_cm):
+                            stats['skipped'] += 1
+                            continue
+
+                        # Apply filter
+                        if filter_mode == 'kalman':
+                            m.range_cm = range_filter.update(m.range_cm, last_dt)
+                            m.angle_deg = angle_filter.update(m.angle_deg, last_dt)
+                        elif filter_mode == 'median':
+                            m.range_cm = median_range.update(m.range_cm)
+                            m.angle_deg = median_angle.update(m.angle_deg)
+                        # 'none': no filtering
+
+                        stats['filt_range'] = m.range_cm
+                        stats['filt_angle'] = m.angle_deg
+
                         with lock:
                             data_deque.append(m)
-                        stats['received'] += 1
-                        stats['last_packet_time'] = time.time()
                     elif any(c in line for c in '{}[]'):
-                        # Looks like JSON but failed to parse
                         stats['skipped'] += 1
             else:
                 time.sleep(0.02)
@@ -320,10 +458,12 @@ def update_plot(frame, data_deque, lock, scatter, trail, lost_text, stats):
     stat_parts = [
         f"Rx: {stats['received']}",
         f"Skip: {stats['skipped']}",
-        f"Err: {stats['errors']}",
     ]
     last = points[-1]
-    stat_parts.append(f"D={last.range_cm:.0f}cm P={last.angle_deg:.0f}°")
+    raw_r = stats.get('raw_range', last.range_cm)
+    raw_a = stats.get('raw_angle', last.angle_deg)
+    stat_parts.append(f"Raw: D={raw_r:.0f}cm P={raw_a:.0f}°")
+    stat_parts.append(f"Flt: D={last.range_cm:.0f}cm P={last.angle_deg:.0f}°")
     scatter.axes.set_title(
         'BU04 PDOA — ' + ' | '.join(stat_parts),
         pad=20, fontsize=9
@@ -402,6 +542,15 @@ def parse_args():
         '--list', '-l', action='store_true',
         help='List available ports and exit'
     )
+    ap.add_argument(
+        '--filter', '-f', choices=['kalman', 'median', 'none'],
+        default='kalman',
+        help='Filter mode: kalman (default), median (window 5), none'
+    )
+    ap.add_argument(
+        '--calibrate', '-c', action='store_true',
+        help='Calibration mode: collect 100 samples at stationary position, print recommended PDOAOFF/RNGOFF'
+    )
     return ap.parse_args()
 
 
@@ -468,6 +617,11 @@ def main():
         'skipped': 0,
         'errors': 0,
         'last_packet_time': time.time(),
+        'last_raw_time': time.time(),
+        'raw_range': 0.0,
+        'raw_angle': 0.0,
+        'filt_range': 0.0,
+        'filt_angle': 0.0,
         'running': True,
     }
 
@@ -475,12 +629,88 @@ def main():
     os.makedirs('logs', exist_ok=True)
     csv_path = os.path.join('logs', datetime.now().strftime('%Y%m%d_%H%M%S') + '.csv')
 
+    # ── Calibration mode ──────────────────────────────────
+    if args.calibrate:
+        print()
+        print("=" * 55)
+        print("  BU04 PDOA CALIBRATION MODE")
+        print("=" * 55)
+        print()
+        print("Place the tag at a KNOWN position and keep it STILL.")
+        print("Example: 1.00 m directly in front of anchor (0°)")
+        print()
+        print("Collecting 100 samples...")
+        print()
+
+        # Start reader without plot
+        reader = threading.Thread(
+            target=reader_thread,
+            args=(ser, data_deque, lock, fmt, stop_event, stats, 'none'),
+            daemon=True, name='serial-reader'
+        )
+        reader.start()
+
+        # Collect 100 raw samples
+        samples_r = []
+        samples_a = []
+        while len(samples_r) < 100:
+            with lock:
+                items = list(data_deque)
+            for m in items:
+                if len(samples_r) >= 100:
+                    break
+                samples_r.append(m.range_cm)
+                samples_a.append(m.angle_deg)
+                # Progress
+                n = len(samples_r)
+                if n % 10 == 0:
+                    print(f"\r  [{n}/100] D={m.range_cm:.0f}cm P={m.angle_deg:.0f}°", end='', flush=True)
+            time.sleep(0.05)
+
+        stop_event.set()
+        ser.close()
+        print()
+
+        # Compute statistics
+        import statistics
+        mean_r = statistics.mean(samples_r)
+        mean_a = statistics.mean(samples_a)
+        stdev_r = statistics.stdev(samples_r)
+        stdev_a = statistics.stdev(samples_a)
+
+        print()
+        print("=" * 55)
+        print("  CALIBRATION RESULTS")
+        print("=" * 55)
+        print(f"  Samples:       {len(samples_r)}")
+        print(f"  Range:         mean={mean_r:.1f} cm  stdev={stdev_r:.1f} cm")
+        print(f"  Angle:         mean={mean_a:.1f} °    stdev={stdev_a:.1f} °")
+        print()
+        print("  Now measure the TRUE distance and angle with a ruler.")
+        print("  Then apply corrections:")
+        print()
+        print(f"  AT+RNGOFF={-int(mean_r - 100):d}     # if true distance = 100 cm")
+        print(f"  AT+PDOAOFF={-int(mean_a):d}          # if true angle = 0°")
+        print()
+        print("  Example for true distance = 100 cm, true angle = 0°:")
+        rngoff = 100 - int(mean_r)
+        pdoaoff = -int(mean_a)
+        print(f"    AT+RNGOFF={rngoff}")
+        print(f"    AT+PDOAOFF={pdoaoff}")
+        print(f"    AT+SAVE")
+        print()
+        print("  Or set values in include/config.h:")
+        print(f"    #define RANGE_OFFSET_CM  {rngoff}")
+        print(f"    #define PDOA_OFFSET_DEG  {pdoaoff}")
+        print()
+        return
+
+    # ── Normal visualization mode ─────────────────────────
     # Start reader thread
     reader = threading.Thread(
         target=reader_thread,
-        args=(ser, data_deque, lock, fmt, stop_event, stats),
-        daemon=True,
-        name='serial-reader'
+        args=(ser, data_deque, lock, fmt, stop_event, stats, args.filter),
+        daemon=True, name='serial-reader'
     )
     reader.start()
 
