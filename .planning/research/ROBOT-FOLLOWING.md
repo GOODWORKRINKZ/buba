@@ -449,3 +449,148 @@ class UWBTrilaterationFollower:
 ### Buy List:
 - 2× BU04 (~$30 total from Taobao)
 - Already have 2 BU04 → total 4 modules
+
+---
+
+## 11. RP2040 UWB Co-Processor Architecture (2026-06-10)
+
+### Why a dedicated co-processor?
+
+Instead of connecting 3× BU04 directly to the robot controller (which wastes cycles polling 3 UARTs and computing trilateration), we use an **RP2040 as a dedicated UWB co-processor**:
+
+```
+                  ┌──────────────────────────────────────┐
+                  │         RP2040 (UWB Co-Processor)     │
+                  │                                      │
+BU04-A ──UART──→ │ UART0 (HW)  ┐                        │
+BU04-B ──UART──→ │ UART1 (HW)  ├─ trilateration ──→ UART │──→ ROBOT
+BU04-C ──UART──→ │ PIO UART    ┘   CN105828431A     I2C  │    controller
+                  │              + Kalman filter    SPI   │    (ROS2/STM32)
+                  │              + outlier reject         │
+                  └──────────────────────────────────────┘
+
+INPUT:  3× raw TWR distances (d1, d2, d3) via AT commands
+CORE:   Patent analytic formula → (L, θ) → (x, y)
+OUTPUT: Single clean position packet to robot
+```
+
+### RP2040 interfaces:
+
+| Direction | Interface | Pins | Notes |
+|-----------|-----------|------|-------|
+| IN: BU04-A | UART0 (HW) | GP0/GP1 | 115200-921600 baud, AT commands |
+| IN: BU04-B | UART1 (HW) | GP4/GP5 | 115200-921600 baud, AT commands |
+| IN: BU04-C | PIO UART | GP8/GP9 | RP2040 PIO = unlimited UARTs |
+| OUT: Robot | UART (PIO) | GP12/GP13 | Clean position output |
+| OUT: Robot | I2C (HW) | GP14/GP15 | Alternative if robot uses I2C |
+| DBG: USB | USB CDC | GP16/GP17 | Debug/programming + serial monitor |
+
+### Why not I2C for BU04?
+
+BU04 stock firmware is **UART-only** for AT commands. I2C hardware exists on PB6/PB7
+but firmware does not listen on it. No SPI slave mode either.
+Options to use I2C would require:
+- Writing custom STM32 firmware (SWD on pins 30-31) — massive effort
+- Using an external UART→I2C bridge — adds complexity, no benefit over PIO UART
+
+**Verdict: UART via PIO is the practical path.**
+
+### Output protocol to Robot:
+
+```
+TAG:150,25\r\n      — tag at 150cm, +25° azimuth
+TAG:120,0\r\n       — tag at 120cm, straight ahead
+TAG:LOST\r\n         — all 3 anchors lost the tag
+TAG:NOISE\r\n        — measurements too noisy, hold position
+TAG:250,45,0.8\r\n   — 250cm, 45°, confidence 0.8
+```
+
+Simple ASCII, 115200 baud, robot parses in one `scanf` call.
+
+### Why RP2040 (not ESP32)?
+
+| Feature | RP2040 | ESP32 |
+|---------|--------|-------|
+| PIO (unlimited UART) | ✅ Yes | ❌ No (3 HW UART max) |
+| Deterministic timing | ✅ No RTOS | ❌ FreeRTOS jitter |
+| Power consumption | ~20mA | ~80mA+ |
+| Price | ~$4 | ~$5 |
+| I2C slave mode | ✅ PIO | ❌ HW only |
+| USB host | ❌ Limited | ❌ Limited |
+| WiFi/BT | ❌ No | ✅ Yes |
+
+RP2040 wins for this: PIO = unlimited UARTs, deterministic timing for trilateration,
+and we don't need WiFi on the co-processor (robot already has ROS2 communication).
+
+---
+
+## 12. Tag Side — What Does the Tag BU04 Need?
+
+### Tag = BU04 in TAG mode — minimal hardware
+
+The tag is remarkably simple. It only needs to **respond to TWR pings** from the 3 anchors.
+No computation, no sensors, no display.
+
+```
+            BU04 TAG (on person)
+┌──────────────────────────────────┐
+│                                  │
+│  BU04 (TAG mode, Role=1)         │
+│  SETCFG=0,1,5,2                 │
+│                                  │
+│  Power: 3.3V battery             │
+│  ┌──────────┐                    │
+│  │ LiPo 1S  │──→ LDO 3.3V       │
+│  │ 500mAh   │                    │
+│  └──────────┘                    │
+│                                  │
+│  ┌─ Optional ─────────────────┐  │
+│  │ LED: power/status          │  │
+│  │ Button: on/off             │  │
+│  │ Buzzer: lost warning       │  │
+│  │ Charger: TP4056 USB-C      │  │
+│  └────────────────────────────┘  │
+│                                  │
+└──────────────────────────────────┘
+```
+
+### Antenna consideration — directional vs omni:
+
+| Tag antenna | Pros | Cons |
+|-------------|------|------|
+| BU04 PCB antenna (120°) | +3dB gain = more range | Person must face robot |
+| BU04 + IPEX omni antenna | Full 360°, ~$2 external | Slight gain loss |
+| BU03 (omni, separate module) | 360° out of box | Different module, different firmware |
+
+**Recommendation: BU04 + external omni antenna via IPEX connector.**
+BU04 supports IPEX external antenna (spec section 1.1: "支持板载天线，兼容 IPEX 座外接天线").
+An omni rubber duck antenna costs ~$2 on Taobao. Best of both worlds:
+unified hardware (4× BU04) with omni coverage on the tag.
+
+### Does the tag need an extra MCU? **No.**
+
+BU04 has STM32F103 built-in. The AT firmware handles all UWB protocol — TWR responses are automatic.
+No external MCU needed on the tag. Just power it and it works.
+
+### Tag power budget:
+
+| Component | Current | 
+|-----------|---------|
+| BU04 TX active | ~150mA peak |
+| BU04 RX/idle | ~30mA |
+| LED | ~5mA |
+| **Total avg** | **~50mA** |
+
+With 500mAh LiPo → **~10 hours** continuous operation.
+With tag refresh rate 4Hz → could optimize for lower power with sleep between pings.
+
+### Tag form factor options:
+1. **Wristband** — patent recommends wrist; BU04 is 35×33mm, fits in a watch-sized case
+2. **Belt clip** — larger battery, more stable orientation
+3. **Neck lanyard** — easy to put on, but antenna orientation varies
+
+### Tag vs Anchor — what's different:
+- Tag runs in TAG mode (Role=1), anchors in ANCHOR mode (Role=0)
+- Tag only responds, never initiates ranging
+- Tag needs battery, anchors are robot-powered
+- Tag antenna should be omni (or at least wide); anchor antenna is directional (120° per anchor, 3 combined = 360°)
