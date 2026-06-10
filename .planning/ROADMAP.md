@@ -8,10 +8,11 @@
 
 ## Phases
 
-- [ ] **Phase 1: Firmware Fixes** — Fix the 2 critical boot bugs so PDOA streams reliably after every reboot
-- [ ] **Phase 2: Python Visualizer** — Real-time polar plot and CSV logger so a human can watch measurements live
-- [ ] **Phase 3: Calibration** — Empirically measure PDOA_OFFSET_DEG and RANGE_OFFSET_CM, write them into firmware
-- [ ] **Phase 4: Accuracy Verification** — Formal 3×3 grid test with RMSE analysis, produce pass/fail verdict
+- [x] **Phase 1: Firmware Fixes** — Fix the 2 critical boot bugs so PDOA streams reliably after every reboot ✅
+- [x] **Phase 2: Python Visualizer** — Real-time polar plot and CSV logger so a human can watch measurements live ✅
+- [ ] **Phase 3: BU04 Robot Following Research** — Research how many BU04 modules, which modes, architecture for tag-following robot
+- [ ] **Phase 4: Calibration** — Empirically measure PDOA_OFFSET_DEG and RANGE_OFFSET_CM, write them into firmware
+- [ ] **Phase 5: Accuracy Verification** — Formal 3×3 grid test with RMSE analysis, produce pass/fail verdict
 
 ---
 
@@ -39,7 +40,7 @@
 - [ ] Power-cycle anchor, open Serial Monitor — startup prints BU04 version, PDOA enabled, tag address (no manual AT input)
 - [ ] Stream runs ≥ 60 s at ≥ 5 Hz — count CSV lines in terminal (`grep -c "^PDOA"`) → ≥ 300 lines
 - [ ] Power-cycle tag while anchor runs — anchor re-registers tag automatically within 10 s
-- [ ] Serial Monitor shows `PDOAOFF=<non-zero>` and `RNGOFF=<non-zero>` confirmation lines on boot (placeholder values ok; will be replaced after Phase 3 calibration)
+- [ ] Serial Monitor shows `PDOAOFF=<non-zero>` and `RNGOFF=<non-zero>` confirmation lines on boot (placeholder values ok; will be replaced after Phase 4 calibration)
 
 **Plans:** TBD
 
@@ -75,10 +76,48 @@
 
 ---
 
-### Phase 3: Calibration
+### Phase 3: BU04 Robot Following Research
+
+**Goal:** Determine how many BU04 modules are needed, which operating modes (TWR vs PDOA), 
+and architecture for a robot that follows a tag-wearing person. Produce a research document 
+with excerpts from academic papers, SDK analysis, and a clear recommendation.
+
+**Depends on:** Phase 2 (CSV data available for reference)
+**Requirements:** RES-01, RES-02, RES-03
+
+**Deliverables:**
+- `.planning/research/ROBOT-FOLLOWING.md` — comprehensive research document (~600 lines):
+  - 4 academic papers summarized (ETH Zurich, CN105828431A patent, IFAC 2024, Appl. Sci. 2024)
+  - SDK data-over-UWB capability confirmed (DW3000 `dwt_writetxdata` API)
+  - BU04 antenna orientation and mounting requirements
+  - RP2040 co-processor architecture design
+  - Tag hardware minimal BOM
+- Recommendation: 4× BU04 total (3 TWR anchors on robot + 1 tag), RP2040 co-processor, 
+  patent-derived analytic trilateration formula
+
+**Key decisions documented:**
+- [x] Module count: 4× BU04 (buy 2 more, total ~$30)
+- [x] Mode: TWR (not PDOA) for 360° trilateration; BU04 directional 120° × 3 = 360°
+- [x] Co-processor: RP2040 (PIO = unlimited UARTs, deterministic, 20mA)
+- [x] Interface: UART (AT commands) to BU04, UART/I2C output to robot
+- [x] Tag: minimal — BU04 + LiPo + external omni antenna via IPEX, no extra MCU
+- [x] Commands: Data-over-UWB for "follow me" button (no extra radio needed)
+- [x] Algorithm: CN105828431A patent analytic formula — L and θ from d1,d2,d3
+
+**Plans:** N/A (research phase — document produced directly)
+
+**UAT:**
+- [ ] `ROBOT-FOLLOWING.md` covers: module count, modes, architecture, antenna orientation, tag design
+- [ ] Academic paper excerpts with DOIs/sources
+- [ ] SDK analysis confirming data-over-UWB feasibility
+- [ ] Clear buy list and next-step recommendation
+
+---
+
+### Phase 4: Calibration
 
 **Goal:** PDOA_OFFSET_DEG and RANGE_OFFSET_CM are empirically measured values (not zeros), written into config.h and deployed to firmware.
-**Depends on:** Phase 2 (CSV logger needed for sample collection)
+**Depends on:** Phase 3 (BU04 research complete, understanding of offsets)
 **Requirements:** CAL-01, CAL-02, CAL-03
 
 **Deliverables:**
@@ -102,10 +141,10 @@
 
 ---
 
-### Phase 4: Accuracy Verification
+### Phase 5: Accuracy Verification
 
 **Goal:** Formal 3×3 grid test passes — RMSE < 10 cm and < 15° at all grid positions — with documented evidence.
-**Depends on:** Phase 3 (calibrated firmware)
+**Depends on:** Phase 4 (calibrated firmware)
 **Requirements:** ACC-01, ACC-02, ACC-03, ACC-04
 
 **Deliverables:**
