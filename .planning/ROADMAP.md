@@ -104,7 +104,11 @@ with excerpts from academic papers, SDK analysis, and a clear recommendation.
 - [x] Commands: Data-over-UWB for "follow me" button (no extra radio needed)
 - [x] Algorithm: CN105828431A patent analytic formula — L and θ from d1,d2,d3
 
-**Plans:** N/A (research phase — document produced directly)
+**Plans:** 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Research deliverable verification: cross-reference D1-D10 against research documents, define RES-01/02/03 in REQUIREMENTS.md
+- [ ] 03-02-PLAN.md — Gray area handoff: document G1-G7 with planner recommendations for Phase 4
 
 **UAT:**
 - [ ] `ROBOT-FOLLOWING.md` covers: module count, modes, architecture, antenna orientation, tag design
@@ -126,10 +130,10 @@ with excerpts from academic papers, SDK analysis, and a clear recommendation.
 - `docs/calibration_procedure.md`: step-by-step physical setup, command sequence, how to re-run calibration
 
 **Plans:**
-- [ ] Plan 3.1: calibrate.py angle offset — place tag at 0°, 1 m; collect 100 samples; print `mean_angle_deg` → this is PDOA_OFFSET_DEG (send as `AT+PDOAOFF=<value>`)
-- [ ] Plan 3.2: calibrate.py range offset — place tag at exactly 1.000 m (measured with tape); collect 100 samples; compute `1000 - mean_range_mm` → this is RANGE_OFFSET_CM (units: verify Q-3 from research)
-- [ ] Plan 3.3: Write offsets to config.h — update `PDOA_OFFSET_DEG` and `RANGE_OFFSET_CM` in `include/config.h`, rebuild and flash `anchor1_pdoa`, confirm startup banner shows new values
-- [ ] Plan 3.4: Calibration docs — write `docs/calibration_procedure.md`: physical jig description, step-by-step commands, expected terminal output, how to interpret results
+- [ ] Plan 4.1: calibrate.py angle offset — place tag at 0°, 1 m; collect 100 samples; print `mean_angle_deg` → this is PDOA_OFFSET_DEG (send as `AT+PDOAOFF=<value>`)
+- [ ] Plan 4.2: calibrate.py range offset — place tag at exactly 1.000 m (measured with tape); collect 100 samples; compute `1000 - mean_range_mm` → this is RANGE_OFFSET_CM (units: verify Q-3 from research)
+- [ ] Plan 4.3: Write offsets to config.h — update `PDOA_OFFSET_DEG` and `RANGE_OFFSET_CM` in `include/config.h`, rebuild and flash `anchor1_pdoa`, confirm startup banner shows new values
+- [ ] Plan 4.4: Calibration docs — write `docs/calibration_procedure.md`: physical jig description, step-by-step commands, expected terminal output, how to interpret results
 
 **UAT:**
 - [ ] `python tools/calibrate.py /dev/ttyACM0 --samples 100 --mode angle` — prints `Recommended PDOA_OFFSET_DEG: X.X` after 100 samples
@@ -154,10 +158,10 @@ with excerpts from academic papers, SDK analysis, and a clear recommendation.
 - Physical setup documented: module heights, antenna orientation, distances to metal surfaces
 
 **Plans:**
-- [ ] Plan 4.1: Grid measurement collection — for each of 9 positions (1 m/2 m/3 m × 0°/+45°/−45°): place tag, run `python tools/visualizer.py --record --output logs/grid_Xm_Ydeg.csv --count 100`, record 100 samples
-- [ ] Plan 4.2: RMSE analysis — script or notebook: load each CSV, compute RMSE(range) and RMSE(angle) vs ground truth, print pass/fail per cell (threshold: range < 0.10 m, angle < 15°)
-- [ ] Plan 4.3: accuracy_test.md — write `docs/accuracy_test.md`: grid diagram (ASCII or image), table of per-cell RMSE, pass/fail per cell, overall verdict, date and BU04 unit ID
-- [ ] Plan 4.4: Physical conditions doc — add section to accuracy_test.md: module mounting height, anchor antenna plane orientation, nearest metal object distances, LOS confirmation, tag height
+- [ ] Plan 5.1: Grid measurement collection — for each of 9 positions (1 m/2 m/3 m × 0°/+45°/−45°): place tag, run `python tools/visualizer.py --record --output logs/grid_Xm_Ydeg.csv --count 100`, record 100 samples
+- [ ] Plan 5.2: RMSE analysis — script or notebook: load each CSV, compute RMSE(range) and RMSE(angle) vs ground truth, print pass/fail per cell (threshold: range < 0.10 m, angle < 15°)
+- [ ] Plan 5.3: accuracy_test.md — write `docs/accuracy_test.md`: grid diagram (ASCII or image), table of per-cell RMSE, pass/fail per cell, overall verdict, date and BU04 unit ID
+- [ ] Plan 5.4: Physical conditions doc — add section to accuracy_test.md: module mounting height, anchor antenna plane orientation, nearest metal object distances, LOS confirmation, tag height
 
 **UAT:**
 - [ ] All 9 `logs/grid_*.csv` files exist with ≥ 100 rows each (`wc -l logs/grid_*.csv`)
@@ -173,16 +177,17 @@ with excerpts from academic papers, SDK analysis, and a clear recommendation.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Firmware Fixes | 0/4 | Not started | - |
-| 2. Python Visualizer | 0/4 | Not started | - |
-| 3. Calibration | 0/4 | Not started | - |
-| 4. Accuracy Verification | 0/4 | Not started | - |
+| 1. Firmware Fixes | — | ✅ Complete | 2026-06-08 |
+| 2. Python Visualizer | — | ✅ Complete | 2026-06-10 |
+| 3. BU04 Robot Following Research | 2/2 | 🔵 Plans created | — |
+| 4. Calibration | 0/4 | ⬜ Not started | — |
+| 5. Accuracy Verification | 0/4 | ⬜ Not started | — |
 
 ---
 
 ## v2 Phases (future milestone)
 
-### Phase 5: Robot Following
+### Phase 6: Robot Following
 
 **Goal:** Anchor ESP32-C3 drives two wheel motors via H-bridge: robot follows tag at ~0.5 m, turns toward angle error, stops on signal loss.
 **Depends on:** Phase 4 passing accuracy test
