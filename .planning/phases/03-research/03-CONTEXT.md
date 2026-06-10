@@ -1,7 +1,7 @@
 # Phase 3: BU04 Robot Following — Context & Decisions
 
 **Date:** 2026-06-10
-**Status:** Research complete — decisions locked for downstream planning
+**Status:** Discuss complete → ready for planning
 
 ---
 
@@ -13,7 +13,116 @@ that downstream phases (planning, execution) can act on without re-investigation
 
 ---
 
-## 2. Key Decisions (LOCKED)
+## 2. Research Methodology (HOW we search)
+
+### Search engines & queries
+
+| Engine | Query pattern | Why |
+|--------|---------------|-----|
+| **DuckDuckGo** | `DW3000 follow robot UWB tag tracking` | Best results for practical projects, no filter bubble |
+| **DuckDuckGo** | `UWB trilateration robot following 3 anchors` | Academic + patent results |
+| **DuckDuckGo** | `BU04 BU03 Ai-Thinker DW3000 project tutorial` | Module-specific usage |
+| **Google Patents** | `UWB trilateration robot following base station status:GRANT` | ~220 patents, filter by cited |
+| **GitHub topics** | `uwb-positioning`, `dw3000` | Filter: has README, has demo, stars > 5 |
+| **Qorvo/Decawave** | Direct PDF download of APS notes | Primary source for TWR errors, antenna cal |
+| **Vendor forums** | forum.qorvo.com, forum.arduino.cc | Real engineers, real problems |
+
+### Filtering criteria
+
+| Keep | Skip |
+|------|------|
+| Has code (GitHub) OR has numbers (paper) OR has product (commercial) | Blog post with no data |
+| Published ≥ 2018 (DW3000 era) | DW1000-only unless concept is transferable |
+| Cites specific accuracy (±X cm) | "We achieved good results" |
+| Open-access PDF | Paywalled unless critical |
+
+### What we DON'T search (waste of time)
+
+- Reddit, Hackaday — opinions, no data
+- YouTube — demos without code/methodology
+- arXiv generic queries — "UWB tracking robot" → 0 results
+- IEEE Xplore direct — blocked, use Google Scholar/DuckDuckGo as proxy
+
+### PDF organization
+
+```
+docs/
+├── datasheets/          ← Vendor specs, pinouts, AT commands
+├── patents/             ← Patent PDFs
+├── uwb-papers/          ← Academic papers
+└── app-notes/           ← Qorvo APS/APH application notes
+```
+
+### What to search NEXT (for planning phase)
+
+1. Download Qorvo DW3000 User Manual (the ~200pp reference)
+2. Fetch `orisharabi/unitree-go2-follow-system` — real UWB robot following code
+3. Read APS011 fully — extract DS-TWR formula validation
+4. Check if BU03 vs BU04 have same AT firmware (SDK comparison)
+5. Search: `"component-wise error correction" UWB target following` — paper PMC8838499
+
+---
+
+## 3. Collected Materials Inventory
+
+### PDFs collected (14 files, ~12MB)
+
+| File | Pages | Source | Key content |
+|------|-------|--------|-------------|
+| `datasheets/bu04_v1.0.0_specification-20240801.pdf` | 21 | Ai-Thinker | Pinout, antenna, mounting rules |
+| `datasheets/bu04_v1.0.0规格书20240801.pdf` | 21 | Ai-Thinker (CN) | Same, Chinese |
+| `datasheets/BU03_BU04_AT_command_cn_V1.0.6.pdf` | ~30 | Ai-Thinker | All AT commands |
+| `patents/CN105828431A.pdf` | ~15 | Google Patents | 3-base-station analytic formula |
+| `uwb-papers/UWBTracker.pdf` | 8 | ETH Zurich | 4-UWB on drone, IEKF, 10cm |
+| `uwb-papers/1-s2.0-...main.pdf` | 6 | IFAC 2024 | UWB + RGB-D camera hybrid |
+| `uwb-papers/applsci-14-06918.pdf` | 15 | MDPI 2024 | Polar robot UWB following |
+| `uwb-papers/UWB_Observer_Based_Human_Following.pdf` | ~10 | Cloudfront | Observer-based control |
+| `app-notes/Qorvo_APS011_TWR_Error_Sources.pdf` | 22 | Qorvo | **THE source** on TWR errors |
+| `app-notes/Qorvo_APS014_Antenna_Delay_Calibration.pdf` | ~10 | Qorvo | Antenna delay tuning |
+| `app-notes/Qorvo_APS017_Maximizing_Range.pdf` | ~10 | Qorvo | Range optimization |
+| `app-notes/Qorvo_APH301_DW3000_HW_Design.pdf` | ~15 | Qorvo | Hardware design guide |
+
+### Online resources (linked in ROBOT-FOLLOWING.md)
+
+| Resource | What |
+|----------|------|
+| Circuit Digest tutorial | Full ESP32+DWM3000 DS-TWR code, Python viz |
+| KunYi/esp32-uwb-positioning | GitHub: 2-10 anchors, web viz, simulator |
+| unitree-go2-follow-system | Real Unitree Go2 UWB following code |
+| Fhilb/DW3000_Arduino | Arduino DW3000 DS-TWR library |
+| OpenELAB BU03 guide | BU03 vs BU04, TWR vs PDOA comparison |
+| Pozyx technology | Commercial UWB RTLS reference |
+| Makerfabs DW3000 examples | Reference ESP32 implementation |
+| Qorvo forum (AndyA) | Tag/anchor architecture insights |
+
+---
+
+## 4. What Planning Needs (handoff)
+
+### Decisions already LOCKED (do not re-discuss):
+- D1-D10 above are final
+
+### Gray areas for planner to resolve:
+| # | Question | Hint |
+|---|----------|------|
+| G1 | Triangle side **a** = ? | 30cm fits small robot, 50cm = better geometry |
+| G2 | RP2040 poll rate? | 4Hz minimum, 10Hz desired |
+| G3 | Output protocol? | `TAG:L,θ` ASCII vs binary 4-byte |
+| G4 | 2-of-3 anchors lost → continue or stop? | Geometry degrades, but can estimate |
+| G5 | TWR per-module calibration needed? | APS014 describes procedure |
+| G6 | Tag battery indicator? Auto-sleep? | ~10h with 500mAh LiPo |
+| G7 | Kalman on RP2040 or robot? | Start without, add if noisy |
+
+### Files planner should read:
+1. `03-CONTEXT.md` (this file) — all decisions
+2. `.planning/research/ROBOT-FOLLOWING.md` — full research with sources
+3. `docs/app-notes/Qorvo_APS011_TWR_Error_Sources.pdf` — TWR error budget
+4. `docs/patents/CN105828431A.pdf` — the formula
+5. `STM32F103-BU0x_SDK/Components/APP/cmd_fn.c` — AT command extension point
+
+---
+
+## 5. Key Decisions (LOCKED)
 
 | # | Decision | Value | Rationale |
 |---|----------|-------|-----------|
@@ -30,7 +139,7 @@ that downstream phases (planning, execution) can act on without re-investigation
 
 ---
 
-## 3. Architecture Overview
+## 6. Architecture Overview
 
 ```
                  ┌──────────────────────────────────────┐
@@ -52,7 +161,7 @@ TAG (on person):
 
 ---
 
-## 4. Patent Formula (CN105828431A)
+## 7. Patent Formula (CN105828431A)
 
 3 base stations A, B, C in equilateral triangle (side = a).
 Tag M at unknown position. Measured distances: d1, d2, d3.
@@ -71,7 +180,7 @@ Coordinate system: O(0,0,0) = midpoint AB, y-axis = robot forward, H = triangle 
 
 ---
 
-## 5. BU04 Antenna Orientation
+## 8. BU04 Antenna Orientation
 
 - Two PCB antennas on opposite edges (RF1, RF2) — used for PDOA phase difference
 - Radiation pattern: directional, ~120° beam (±60°), back side = ~0%
@@ -83,7 +192,7 @@ Coordinate system: O(0,0,0) = midpoint AB, y-axis = robot forward, H = triangle 
 
 ---
 
-## 6. Data-over-UWB for Commands
+## 9. Data-over-UWB for Commands
 
 Stock AT firmware doesn't expose data TX, but SDK makes it trivial to add:
 
