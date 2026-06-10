@@ -594,3 +594,114 @@ With tag refresh rate 4Hz → could optimize for lower power with sleep between 
 - Tag only responds, never initiates ranging
 - Tag needs battery, anchors are robot-powered
 - Tag antenna should be omni (or at least wide); anchor antenna is directional (120° per anchor, 3 combined = 360°)
+
+---
+
+## 13. Data-over-UWB: Sending Commands Through BU04 (2026-06-10)
+
+### Key Finding: BU04 SDK supports arbitrary data TX/RX!
+
+Analysis of `STM32F103-BU0x_SDK` reveals that DW3000 **fully supports sending custom
+data frames** — up to 1023 bytes per frame at 6.8 Mbps. The stock firmware doesn't
+expose this via AT commands, but the SDK makes it trivial to add.
+
+### DW3000 Data TX API (from SDK `deca_device_api.h`):
+
+```c
+// Send arbitrary data (1-1023 bytes):
+dwt_writetxdata(len, buffer, offset);   // Write payload to TX buffer
+dwt_writetxfctrl(frameLen, offset, 0);  // Configure frame control
+dwt_starttx(DWT_START_TX_IMMEDIATE);    // Transmit now
+
+// Receive data:
+dwt_readrxdata(rx_buffer, frame_len, 0); // Read received payload
+```
+
+**TX Modes available:**
+| Mode | Description |
+|------|-------------|
+| `DWT_START_TX_IMMEDIATE` | Transmit now |
+| `DWT_START_TX_IMMEDIATE \| DWT_RESPONSE_EXPECTED` | TX then auto-RX response |
+| `DWT_START_TX_DELAYED` | Scheduled TX at precise timestamp |
+| `DWT_START_TX_CCA` | TX only if channel is clear |
+
+### Existing SDK Example (ex_03a_tx_wait_resp):
+
+```c
+// Already sends "DECAWAVE" over UWB — proof it works!
+static uint8_t tx_msg[] = {0xC5, 0, 'D','E','C','A','W','A','V','E', 0x43, 0x02, 0, 0};
+
+dwt_writetxdata(sizeof(tx_msg), tx_msg, 0);
+dwt_writetxfctrl(sizeof(tx_msg), 0, 0);
+dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
+```
+
+### AT Command Framework — Add Custom Commands in 3 Lines
+
+In `cmd_fn.c`, the command table `known_commands[]` is trivially extensible:
+
+```c
+// 1. Write handler function:
+int f_send_btn(int opt, int argc, char* argv[]) {
+    uint8_t data[] = {0xC5, 0, 'B', 'T', 'N', (uint8_t)atoi(argv[0])};
+    dwt_writetxdata(sizeof(data), data, 0);
+    dwt_writetxfctrl(sizeof(data), 0, 0);
+    dwt_starttx(DWT_START_TX_IMMEDIATE);
+    return 0;  // 0 = success → "OK", -1 = error → "ERROR"
+}
+
+// 2. Register in known_commands[]:
+//    Query:  {"AT+CMD", handler}  → AT+CMD? calls handler(QUERY_CMD, ...)
+//    Execute: {"AT+CMD", handler} → AT+CMD  calls handler(EXECUTE_CMD, ...)
+//    Set:     {"AT+CMD", handler} → AT+CMD=val calls handler(SET_CMD, ...)
+{"AT+BUTTON", f_send_btn},  // ← one line to add!
+```
+
+### "Follow Me" Button — Complete Architecture Over UWB Only:
+
+```
+ТЕГ BU04 (на человеке):               АНКЕР BU04 (на роботе):
+┌──────────────────────────┐         ┌──────────────────────────┐
+│ PB6 ← кнопка (GPIO)      │         │                          │
+│ Прерывание по нажатию:   │         │ RX-прерывание:           │
+│  → dwt_writetxdata(...)  │  UWB    │  → dwt_readrxdata(...)   │
+│  → dwt_starttx(...)      │────────→│  → buffer = "BTN1"      │
+│                          │  DATA   │  → UART TX("BTN:1\r\n") │
+│ (UWB TWR продолжается    │         │                          │
+│  параллельно!)           │         │ RP2040 получает команду  │
+└──────────────────────────┘         └──────────────────────────┘
+
+Без HC-12, без BLE, без дополнительного радио!
+UWB = позиция + команды в одном флаконе.
+```
+
+### Command Protocol (proposed):
+
+| Command | UWB Payload | Meaning |
+|---------|-------------|---------|
+| Button Follow | `BTN1` | Start following |
+| Button Stop | `BTN0` | Stop following |
+| Button Faster | `BTN+` | Increase speed |
+| Button Slower | `BTN-` | Decrease speed |
+| Emergency Stop | `BTN!` | Immediate halt |
+| Heartbeat | `HB##` | Tag battery/status |
+
+### Why This Is Better Than HC-12/BLE:
+
+| Approach | Extra HW | Range | Latency | Complexity |
+|----------|----------|-------|---------|------------|
+| HC-12 (433MHz) | $2 ×2 | 1km | ~50ms | Extra wiring |
+| BLE module | $3 ×2 | 10m | ~30ms | Pairing, stack |
+| **UWB data frame** | **$0** | **= TWR range** | **<5ms** | **3 lines in cmd_fn.c** |
+
+UWB data is literally free — the radio is already transmitting. Adding a few bytes
+to the payload costs nothing in hardware, range, or update rate.
+
+### Implementation Effort:
+
+1. **Tag firmware** (`cmd_fn.c`): Add `AT+BUTTON` handler + GPIO interrupt → ~20 lines
+2. **Anchor firmware** (`cmd_fn.c`): Add RX handler that forwards to UART → ~15 lines
+3. **RP2040 firmware**: Parse `BTN:1` from anchor UART → ~10 lines
+4. **Robot controller**: React to button commands → existing
+
+**Total: ~45 lines of C + 10 lines of Python. No new hardware.**
