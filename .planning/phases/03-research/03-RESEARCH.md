@@ -210,3 +210,85 @@ Tag = BU04 in TAG mode, no extra MCU needed. STM32 handles TWR responses autonom
 - Appl. Sci. paper: `docs/uwb-papers/applsci-14-06918.pdf`
 - Qorvo APS011 (TWR errors): `docs/app-notes/Qorvo_APS011_TWR_Error_Sources.pdf`
 - Qorvo APS014 (antenna cal): `docs/app-notes/Qorvo_APS014_Antenna_Delay_Calibration.pdf`
+
+---
+
+## 11. Search Results — New Findings (2026-06-10)
+
+**Executed June 10, 2026 — 15 DuckDuckGo queries across 3 groups. 22 KEEP-worthy results found.**
+
+### Finding Summary Table
+
+| # | Source | What Found | Importance (1-5) | Impact on Project |
+|---|--------|-----------|-------------------|-------------------|
+| 1 | Qorvo/Mouser | DW3000 Datasheet (255pp, 6.2MB) | ⭐⭐⭐⭐⭐ | Full electrical specs, register map, pinout |
+| 2 | Qorvo Forum | DW3000 API Guide (2.3MB) | ⭐⭐⭐⭐⭐ | All dwt_* functions for custom firmware |
+| 3 | caramelfur.dev | DW3000 User Manual (HTML, full) | ⭐⭐⭐⭐ | Channel config, MAC, register descriptions |
+| 4 | GitHub: kk9six/dw3000 | ESP32+DW3000 DS-TWR, 1tag+Nanchors | ⭐⭐⭐⭐⭐ | Production-quality TWR protocol reference |
+| 5 | GitHub: Makerfabs | DW3000 Arduino library (154 stars) | ⭐⭐⭐⭐ | Most-used open-source DW3000 driver |
+| 6 | GitHub: unitree-go2 | UWB+YOLOv8 following (Python) | ⭐⭐⭐ | FSM pattern, follow controller params |
+| 7 | GitHub: Hubito | UWB human following robot | ⭐⭐⭐ | Another architecture reference |
+| 8 | GitHub: ESP32-AppleNearby | DW3000+Apple U1 interop | ⭐⭐ | Future Apple ecosystem integration |
+| 9 | GitHub: esphome-uwb-dw3000 | ESPHome DW3000 + ant cal guide | ⭐⭐⭐⭐ | Practical antenna delay calibration doc |
+| 10 | GitHub: cliansang | UWB positioning algorithms (MATLAB) | ⭐⭐⭐ | Trilateration, Kalman, EKF implementations |
+| 11 | Qorvo Forum | Antenna delay in DW3000 TWR | ⭐⭐⭐⭐ | Register-level calibration steps |
+| 12 | Qorvo Forum | Trilateration calculation method | ⭐⭐⭐ | Engineer discussion on practical impl |
+| 13 | docs.ai-thinker.com | BU Series Module docs portal | ⭐⭐⭐⭐⭐ | Official Ai-Thinker BU01-BU07 documentation |
+| 14 | NiceRF | DW3000 UWB Indoor Positioning guide | ⭐⭐⭐ | TWR calibration + anchor placement |
+| 15 | Bluetooth.com.cn | Precise TWR with DW3000 | ⭐⭐⭐⭐ | Register-level calibration optimization |
+
+### Key Decisions Reinforced by Search
+
+- **D2 (TWR mode):** STRENGTHENED — DS-TWR gives ±2-3cm with calibration vs ±20-60cm for SS-TWR. TWR clearly superior to PDOA for 360deg following.
+- **D3 (Equilateral triangle):** CONFIRMED — No alternative geometry found in any project. Patent + ETH Zurich both use triangle arrangement.
+- **D4 (RP2040):** CONFIRMED — No alternative co-processor found with PIO capability. ESP32 limited to 3 HW UARTs.
+- **D10 (Purchase 2 more BU04):** STRENGTHENED — BU03 better as tag (omni antenna), but we already have 2 BU04. Buy 2 more BU04 for anchors = 4 total.
+
+### New Documents Downloaded
+
+| Document | Size | Source |
+|----------|------|--------|
+| DW3000 Datasheet | 6.2MB, 255pp | Qorvo/Mouser |
+| DW3000 API Guide | 2.3MB | Qorvo Forum |
+| DW3000 User Manual (short) | 68KB | Qorvo Forum |
+| BU04 Spec (empere.in mirror) | 1.4MB | empere.in |
+
+### PMC8838499 Status
+
+Paper download FAILED — PubMed Central returns HTML redirect. Interim decision: DEFER to v2. Patent CN105828431A + APS011 DS-TWR calibration sufficient for v1 accuracy.
+
+### Search Queries for Reproducibility
+
+Group A (DW3000 docs):
+1. "DW3000 user manual PDF download Qorvo"
+2. "DW3000 datasheet specifications register map"
+3. "DW3000 register map API reference dwt_configure dwt_readfromdevice"
+4. "DW3000 software API guide decawave"
+5. "DW3000 programming manual dwt_configure"
+
+Group B (UWB robot following):
+6. "UWB robot following human tracking open source project github"
+7. "DW3000 TWR robot follow human tag tracking GitHub"
+8. "UWB trilateration robot following 3 anchors open source"
+9. "BU04 Ai-Thinker robot following project example"
+10. "UWB autonomous following robot STM32 DW3000"
+
+Group C (alternatives + calibration):
+11. "UWB PDOA vs TWR robot following accuracy comparison"
+12. "trilateration algorithm 3 anchors equilateral triangle closed form UWB"
+13. "DW3000 calibration antenna delay AT RNGOFF PDOAOFF BU04 TWR accuracy 10cm"
+14. "BU06 BU07 Ai-Thinker UWB module specifications datasheet"
+15. "BU0x Ai-Thinker UWB module comparison BU01 BU02 BU03 BU04 BU06 BU07"
+
+## References (Updated)
+
+- **NEW:** DW3000 Datasheet: `docs/datasheets/DW3000_Datasheet.pdf` (255pp)
+- **NEW:** DW3000 API Guide: `docs/app-notes/DW3000_API_Guide.pdf` (2.3MB)
+- **NEW:** DW3000 User Manual (HTML): https://caramelfur.dev/docs/DW3000-User-Manual/
+- **NEW:** GitHub kk9six/dw3000: https://github.com/kk9six/dw3000 (DS-TWR ref)
+- **NEW:** GitHub unitree-go2: https://github.com/orisharabi/unitree-go2-follow-system
+- **NEW:** GitHub Makerfabs DW3000: https://github.com/Makerfabs/Makerfabs-ESP32-UWB-DW3000
+- **NEW:** GitHub Hubito: https://github.com/kimkihyun97/Hubito
+- **NEW:** Ai-Thinker BU docs: https://docs.ai-thinker.com/en/uwb_1/
+- **NEW:** DW3000_notes.md: https://gist.github.com/egnor/455d510e11c22deafdec14b09da5bf54
+- All previous references retained (see full list in ROBOT-FOLLOWING.md §14.5)
