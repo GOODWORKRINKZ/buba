@@ -36,6 +36,12 @@
 - [ ] **ACC-03**: Результаты теста сохраняются в CSV и оформляются в `docs/accuracy_test.md` с заключением pass/fail
 - [ ] **ACC-04**: Задокументированы физические условия стенда: высота модулей, ориентация антенн, расстояние до металлических поверхностей
 
+### Research — Исследование (Phase 3)
+
+- [x] **RES-01**: Исследование определяет необходимое количество BU04 (4× всего: 3 якоря + 1 тег) и режим работы (TWR-трилатерация, не PDOA) с обоснованием из патента CN105828431A и научных статей (UWBTracker ETH, IFAC 2024, MDPI Polar Robot)
+- [x] **RES-02**: Архитектура системы спроектирована: сопроцессор RP2040 с 3× UART к BU04-якорям через PIO, выход UART/I2C на робота, data-over-UWB для кнопки «следуй за мной», якоря в равностороннем треугольнике (a=30-50 см), тег = BU04 + LiPo 500 мАч + внешняя всенаправленная антенна (IPEX)
+- [x] **RES-03**: Создан исследовательский документ (`.planning/research/ROBOT-FOLLOWING.md`, >1000 строк) с: 4+ аннотациями научных статей с DOI, анализом SDK data-over-UWB, ограничениями антенн BU04, аппаратной спецификацией (~$42), архитектурной диаграммой, и чёткими рекомендациями для Phase 4 (калибровка)
+
 ---
 
 ## v2 Requirements — Robot Following (следующий milestone, после v1)
@@ -88,10 +94,13 @@
 | ACC-02 | Phase 4 | Pending |
 | ACC-03 | Phase 4 | Pending |
 | ACC-04 | Phase 4 | Pending |
+| RES-01 | Phase 3 | Complete |
+| RES-02 | Phase 3 | Complete |
+| RES-03 | Phase 3 | Complete |
 
 **Coverage:**
-- v1 requirements: 17 total
-- Mapped to phases: 17
+- v1 requirements: 20 total
+- Mapped to phases: 20
 - Unmapped: 0 ✓
 
 ---

@@ -1032,3 +1032,87 @@ This combination does NOT exist in any public repo — we are building something
 3. **RP2040 PIO UART reliability:** Has anyone tested 3 simultaneous UART RX via PIO at 115200 with BU04 data streaming?
 4. **Triangle size optimization:** Patent says a=30-50cm. What is optimal for our specific robot chassis? Wider base = better angular resolution but harder to mount.
 5. **Multipath indoors:** APS011 shows 5-50cm multipath error. How does this affect our trilateration in typical home/office environment?
+
+---
+
+### 14.10 Patents Found (Google Patents + SIPO)
+
+| Patent ID | Title | Year | Key Claim | Relevance |
+|-----------|-------|------|-----------|-----------|
+| CN105828431A | UWB autonomous following robot positioning method | 2016 | 3-base-station analytic formula (OUR reference) | ⭐⭐⭐⭐⭐ |
+| CN113282085A | Robot following system and method based on UWB | 2021 | UWB+vision fusion for following | ⭐⭐⭐⭐ |
+| CN116300613A | UWB+IMU intelligent following service robot | 2023 | Multi-sensor fusion, behavior-aware control | ⭐⭐⭐⭐ |
+| CN115239759A | Mobile robot following based on vision + UWB | 2022 | Visual+UWB hybrid, target re-identification | ⭐⭐⭐ |
+| CN114625122A | Robot following + obstacle avoiding with UWB | 2022 | UWB-guided obstacle avoidance path planning | ⭐⭐⭐⭐ |
+| US20230008482A1 | Object following robot using UWB | 2023 | US filing of UWB robot following with multiple anchors | ⭐⭐⭐⭐ |
+| KR20230007877A | Method for object following robot using UWB | 2023 | Korean variant — Samsung? | ⭐⭐⭐ |
+
+**Key insight from patent landscape:** CN105828431A (2016, our reference) is the foundational patent for analytic 3-anchor trilateration. Newer patents (2021-2023) all focus on UWB+vision/IMU fusion — confirming that pure UWB following is a solved problem and the frontier is multi-sensor fusion. Our v1 approach (pure UWB analytic formula) is the right starting point; sensor fusion is v2+.
+
+**Commercial patent activity (Chinese companies):**
+- **耀晟智能 (YaoSheng AI)** — 2025 patent on UWB following robot with behavior perception + dynamic control
+- **华为 (Huawei)** — UWB communication optimization patent (chip-level, not robot-level)
+- **汇顶科技 (Goodix)** — UWB chip + communication method patent
+
+### 14.11 Chinese UWB Robot Projects & Resources
+
+#### GitHub — Chinese-language UWB projects
+
+| Project | URL | Description | Applicability |
+|---------|-----|-------------|---------------|
+| **L348350841/DW3000** | github.com/L348350841/DW3000 | UWB 人员定位 (personnel positioning) — DW3000 + STM32 | ⭐⭐⭐⭐ |
+| **Roiquiem/MaUWB_DW3000-with-STM32-AT-Command** | github.com/Roiquiem/MaUWB_DW3000 | STM32 AT Command interface for MaUWB DW3000 module | ⭐⭐⭐⭐⭐ Directly relevant! AT command parsing on STM32 |
+| **2411752523/UWB-Positioning-Car** | github.com/2411752523/UWB-Positioning-Car | UWB小车 — path planning via UWB coordinates | ⭐⭐⭐ |
+| **KunYi/esp32-uwb-positioning-system** | github.com/KunYi/esp32-uwb-positioning-system | 2-10 anchors, web viz, simulator, ESP32+DW3000 | ⭐⭐⭐⭐⭐ Production-quality multi-anchor system |
+
+#### Chinese technical articles (CSDN, Zhihu, Bilibili)
+
+| Resource | Platform | Content |
+|----------|----------|---------|
+| UWB自动跟随技术原理、算法融合、优化 | CSDN | Full deep-dive on UWB auto-follow: TWR principle, trilateration math, Kalman fusion, common pitfalls |
+| DW3000+STM32定位通信模块设计 | CSDN | Hardware design for DW3000+STM32 positioning module with schematics |
+| BU04 UWB室内定位测距模块教程 | CSDN/Zhihu | BU04 ranging tutorial with AT commands and实测 data |
+| 安信可UWB模组智能跟随 | 什么值得买 | Ai-Thinker UWB module follow-me guide with practical setup |
+| DW3000+STM32 B站视频 | Bilibili | Video tutorial: DW3000 positioning module design + testing |
+| UWB与毫米波雷达融合智能跟随小车 | CSDN | UWB + mmWave radar fusion for following car |
+| 基于UWB定位的智能跟随车系统设计 | JICES Journal (2023) | Academic paper: UWB-based intelligent following car system design |
+
+#### Chinese research papers
+
+| Paper | Source | Year | Key Finding |
+|-------|--------|------|-------------|
+| 智能跟随车 UWB定位系统设计 | JICES | 2023 | Full system design: UWB positioning + car control, tested accuracy |
+| UWB+毫米波雷达融合跟随小车 | CSDN/Journal | 2024 | Multi-sensor: UWB for location + mmWave for obstacle detection |
+| 华为UWB通信测距优化 | Sohu/Huawei | 2024 | Chip-level UWB ranging optimization — not robot-level but shows industry investment |
+
+### 14.12 Additional GitHub/Research Finds (Broad Search Round 2)
+
+| Project | URL | Type | Key Value |
+|---------|-----|------|-----------|
+| **zerocompany/UWB-List** | github.com/zerocompany/UWB-List | Curated list | Comprehensive list of UWB research papers + projects — goldmine for further reading |
+| **KlemenBr/uwb_positioning** | github.com/KlemenBr/uwb_positioning | Code | UWB positioning preprocessing pipeline |
+| **krebsbstn/uwb-tracking** | github.com/krebsbstn/uwb-tracking | Code | UWB tracking implementation |
+| **DhamuVkl/ESP32-DWM3000-UWB-Indoor-RTLS-Tracker** | github.com/DhamuVkl | Code | Real-time location tracker with ESP32+DW3000 |
+| **ETH Zurich UWBTracker** | ait.ethz.ch/uwb-tracker | Research+Code | 4-UWB on drone, IEKF, 10cm — gold standard paper |
+| **arXiv:2505.05903** | arxiv.org | Paper (2025) | Adaptive Robot Localization with UWB Novelty Detection |
+| **Survey: UWB localization for mobile autonomous robots** | ScienceDirect | Paper (2025) | Comprehensive survey — captures entire field state-of-art |
+| **IEEE: Global UWB System for Mobile Robot Localization** | IEEE | Paper (2024) | High-accuracy mobile robot localization with UWB |
+| **arXiv:2403.10194** | arxiv.org | Paper (2024) | UWB Positioning System Based on ESP32 and DWM3000 |
+| **ResearchGate: Hybrid Human Tracking UWB+Monocular** | ResearchGate | Paper (2025) | UWB + monocular camera sensor fusion for following |
+| **PDF: Novel UWB Full-Range Multi-Angle Following Robot** | fyust.edu.cn | Paper (2026) | Chinese university — full-range following with UWB |
+| **PDF: Autonomous Human Tracking UWB for Mobile Robots** | Cloudfront | Paper | Observer-based control approach for UWB following |
+| **ResearchGate: UWB Side-by-Side Following** | ResearchGate | Paper | Adaptable side-by-side human-following with UWB |
+
+---
+
+## 15. New Open Questions (Updated)
+
+1. DW3000 Full User Manual behind Qorvo NDA? → Try Qorvo sales@
+2. BU06/BU07 newer Ai-Thinker modules — need specs from docs.ai-thinker.com
+3. RP2040 PIO UART reliability at 3× 115200 with BU04 streaming — empirical test needed
+4. Optimal triangle side a — patent range 30-50cm, test both in Phase 4
+5. Multipath error indoors — APS011 shows 5-50cm, test in actual environment
+6. **MaUWB DW3000 module** (github.com/Roiquiem) — is this another vendor of DW3000 modules? Check compatibility with BU04 AT commands
+7. **耀晟智能 patent (2025)** — commercial UWB following robot — competitor analysis?
+8. **JICES 2023 paper** — full system design for UWB following car — get PDF for architecture reference
+9. **zerocompany/UWB-List** — mine this curated list for additional papers we missed
