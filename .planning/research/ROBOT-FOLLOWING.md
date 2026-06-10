@@ -1,7 +1,8 @@
-# UWB Robot Following — Comprehensive Research
+# UWB Следование за человеком — Комплексное исследование
 
-**Researched:** 2026-06-10
-**Sources:** GitHub, Makerfabs, Reddit, Hackaday, YouTube, Arduino Forum, 4 Academic Papers, user's ROS2 workspace
+**Дата:** 2026-06-10
+**Источники:** DuckDuckGo (20+ запросов), Google Patents (7 патентов), GitHub (11 репозиториев), Qorvo Forum, CSDN, Zhihu, Bilibili, ResearchGate, arXiv, IEEE, MDPI, 4 академические статьи
+**Язык:** Русский
 
 ---
 
@@ -706,413 +707,355 @@ to the payload costs nothing in hardware, range, or update rate.
 
 **Total: ~45 lines of C + 10 lines of Python. No new hardware.**
 
-## 14. DuckDuckGo Search Results (2026-06-10)
+# UWB Следование за человеком — Комплексное исследование
 
-**Search executed:** June 10, 2026 via DuckDuckGo (15+ queries across 3 groups)
-**Search engine:** DuckDuckGo (no filter bubble; also checked Google Patents, GitHub topics, Qorvo forum)
-**Total queries:** 15 across 3 groups; **Found:** 22 KEEP-worthy results; **Skipped:** ~40+ (blogs without data, DW1000-only, paywalled, Reddit/Hackaday/YouTube)
-
-**Queries executed:**
-| Group | # Queries | Example queries |
-|-------|-----------|-----------------|
-| A: DW3000 docs | 5 | "DW3000 User Manual PDF Qorvo", "DW3000 register map API dwt_configure", "DW3000 datasheet specifications" |
-| B: UWB robot following | 5 | "UWB robot following human tracking github", "DW3000 TWR robot follow tag", "BU04 Ai-Thinker robot following" |
-| C: Alternatives + calibration | 5 | "UWB PDOA vs TWR accuracy comparison", "trilateration 3 anchors closed form", "DW3000 calibration antenna delay AT RNGOFF" |
+**Дата:** 2026-06-10
+**Источники:** DuckDuckGo (20+ запросов), Google Patents (7 патентов), GitHub (11 репозиториев), Qorvo Forum, CSDN, Zhihu, Bilibili, ResearchGate, arXiv, IEEE, MDPI
+**Язык документа:** Русский
 
 ---
 
-### 14.1 DW3000 Documentation Found
+## 14. Результаты поиска DuckDuckGo (2026-06-10)
 
-| # | Document | URL | Status | Size | Key Content |
-|---|----------|-----|--------|------|-------------|
-| 1 | **DW3000 Datasheet** | Qorvo/Mouser | ✅ DOWNLOADED | 6.2MB, 255pp | Full electrical specs, pinout, register map, package info |
-| 2 | **DW3000 User Manual (short)** | forum.qorvo.com | ✅ DOWNLOADED | 68KB | Basic operation, programming overview. NOT the full ~200pp manual |
-| 3 | **DW3xxx API Guide** | forum.qorvo.com | ✅ DOWNLOADED | 2.3MB | All dwt_* functions: dwt_configure, dwt_readfromdevice, dwt_writetxdata, etc. |
-| 4 | **DW3000 User Manual (HTML)** | caramelfur.dev/docs/DW3000-User-Manual/ | 🌐 ONLINE | HTML | Full user manual rendered as HTML — channel config, RX/TX, MAC, register descriptions |
-| 5 | **APS011 TWR Error Sources** | Qorvo (already have) | ✅ HAVE | 612KB, 22pp | Clock drift analysis, SDS-TWR formula, calibration distances table |
-| 6 | **APS014 Antenna Delay Cal** | Qorvo (already have) | ✅ HAVE | 412KB | Antenna delay measurement procedure |
-| 7 | **APS017 Maximizing Range** | Qorvo (already have) | ✅ HAVE | 544KB | Range optimization for DW3000 |
-| 8 | **APH301 HW Design Guide** | Qorvo (already have) | ✅ HAVE | 1.5MB | PCB layout, antenna matching, power supply |
-| 9 | **DW3000_notes.md** | gist.github.com/egnor | 🌐 GIST | — | Community notes on DW3000 quirks, SPI timing, register gotchas |
+**Поиск выполнен:** 10 июня 2026, DuckDuckGo (без пузыря фильтров) + Google Patents + GitHub topics + Qorvo Forum
+**Всего запросов:** 20+ по 3 группам + китайский поиск + патентный поиск
+**Найдено:** 30+ стоящих результатов | **Пропущено:** ~50+ (блоги без данных, DW1000-only, paywall, Reddit/Hackaday/YouTube)
 
-**Key finding:** The full ~200pp DW3000 User Manual likely requires Qorvo NDA/registration at qorvo.com/products/d/da008154. The 68KB version is a short excerpt. The HTML version at caramelfur.dev is a community-hosted full manual.
-
-**DW3000 API Guide — key functions documented:**
-- \ — channel, PRF, data rate, preamble settings
-- \ / \ — SPI register access
-- \ — transmit arbitrary data (up to 1023 bytes) — KEY for data-over-UWB button!
-- \ — RX timestamp for TWR
-- \ — antenna delay compensation
-
-**Relevance to our project:** ⭐⭐⭐⭐⭐ The API Guide is essential for implementing custom data-over-UWB button commands. The full user manual (HTML version) covers all DW3000 registers needed for advanced TWR implementation.
+**Выполненные запросы:**
+| Группа | Запросов | Примеры запросов |
+|--------|---------|-----------------|
+| A: DW3000 документация | 6 | "DW3000 User Manual PDF Qorvo", "DW3000 register map API dwt_configure", "DW3000 datasheet specifications" |
+| B: UWB роботы-следователи | 7 | "UWB robot following human tracking github", "DW3000 TWR robot follow tag", "UWB follower robot", "UWB follow me robot", "esp32 uwb robot follow" |
+| C: Альтернативы + калибровка | 5 | "UWB PDOA vs TWR accuracy comparison", "trilateration 3 anchors closed form", "DW3000 calibration antenna delay" |
+| D: Китайские разработки | 4 | "超宽带 UWB 跟随 机器人 专利", "UWB 跟随 机器人 STM32 DW3000 BU04", "安信可 BU04 项目" |
+| E: Патенты | 3 | "site:patents.google.com UWB trilateration robot following", "UWB follow robot patent CN105 CN106" |
 
 ---
 
-### 14.2 UWB Robot Following Projects Found
+### 14.1 Найденная документация DW3000
+
+| # | Документ | URL | Статус | Размер | Ключевое содержание |
+|---|----------|-----|--------|--------|---------------------|
+| 1 | **DW3000 Datasheet** | Qorvo/Mouser | ✅ СКАЧАН | 6.2 МБ, 255 стр | Полные электрические характеристики, распиновка, карта регистров |
+| 2 | **DW3000 User Manual (краткая версия)** | forum.qorvo.com | ✅ СКАЧАН | 68 КБ | Базовое описание, обзор программирования. НЕ полный мануал на ~200 стр |
+| 3 | **DW3xxx API Guide** | forum.qorvo.com | ✅ СКАЧАН | 2.3 МБ | Все функции dwt_*: dwt_configure, dwt_readfromdevice, dwt_writetxdata и др. |
+| 4 | **DW3000 User Manual (HTML)** | caramelfur.dev/docs/DW3000-User-Manual/ | 🌐 ОНЛАЙН | HTML | Полный мануал в HTML — каналы, RX/TX, MAC, описания регистров |
+| 5 | **APS011 TWR Error Sources** | Qorvo (уже есть) | ✅ ЕСТЬ | 612 КБ, 22 стр | Анализ дрейфа часов, формула SDS-TWR, таблица калибровочных расстояний |
+| 6 | **APS014 Antenna Delay Cal** | Qorvo (уже есть) | ✅ ЕСТЬ | 412 КБ | Процедура измерения задержки антенны |
+| 7 | **APS017 Maximizing Range** | Qorvo (уже есть) | ✅ ЕСТЬ | 544 КБ | Оптимизация дальности DW3000 |
+| 8 | **APH301 HW Design Guide** | Qorvo (уже есть) | ✅ ЕСТЬ | 1.5 МБ | Разводка платы, согласование антенны, питание |
+| 9 | **DW3000_notes.md** | gist.github.com/egnor | 🌐 GIST | — | Заметки сообщества: особенности SPI, тайминги, грабли с регистрами |
+
+**Ключевой вывод:** Полный DW3000 User Manual (~200 стр), вероятно, требует NDA/регистрации на qorvo.com. Версия 68 КБ — это краткая выжимка. HTML-версия на caramelfur.dev — community-hosted полный мануал.
+
+**Ключевые функции DW3000 API Guide:**
+- `dwt_configure()` — настройка канала, PRF, скорости данных, преамбулы
+- `dwt_readfromdevice()` / `dwt_writetodevice()` — доступ к регистрам по SPI
+- `dwt_writetxdata()` — передача произвольных данных (до 1023 байт) — КЛЮЧ для кнопки data-over-UWB!
+- `dwt_readrxtimestamp()` — RX метка времени для TWR
+- `dwt_setantennadelay()` — компенсация задержки антенны
+
+**Применимость к нашему проекту:** ⭐⭐⭐⭐⭐ API Guide критичен для реализации кнопки data-over-UWB. Полный мануал (HTML) покрывает все регистры DW3000 для продвинутой реализации TWR.
+
+---
+
+### 14.2 Найденные UWB роботы-следователи (GitHub + проекты)
 
 #### 14.2.1 unitree-go2-follow-system (orisharabi)
 - **URL:** https://github.com/orisharabi/unitree-go2-follow-system
-- **Language:** Python | **Stars:** — | **License:** —
-- **UWB:** Uses Unitree Go2's BUILT-IN UWB (not external BU04/DWM3000 modules). Access via \ DDS message (Unitree SDK).
-- **Algorithm:** UWB provides distance_est, yaw_est, orientation_est. Follow controller: dead_band=1.2m, max_vx=0.9 m/s, max_wz=0.96 rad/s. Vision (YOLOv8) used for object approach mode.
-- **Architecture:** 3-state FSM: FOLLOW (UWB) → APPROACH (YOLO) → HOLD → FOLLOW
-- **Anchors:** Go2 robot has built-in UWB base + tag on person (single tag, single anchor on robot — NOT trilateration)
-- **Controller:** Unitree Go2 onboard (likely ARM Linux + ROS2)
-- **Key insight:** Go2 built-in UWB gives distance+orientation from a single anchor-tag pair. This is simpler than 3-anchor trilateration but Go2 UWB hardware is proprietary and not BU04-compatible.
-- **What we can take:** FollowController parameters (dead band 1.2m, smooth_alpha=0.2), behavioral FSM pattern, UWB button monitoring pattern.
-- **Applicability to BU04:** ⭐⭐⭐ (architectural patterns only, not hardware)
+- **Язык:** Python | **Звёзд:** — 
+- **UWB:** Использует ВСТРОЕННЫЙ UWB Unitree Go2 (не внешние BU04/DWM3000). Доступ через DDS сообщение `UwbState_`.
+- **Алгоритм:** UWB даёт distance_est, yaw_est. Follow-контроллер: мёртвая зона 1.2м, max_vx=0.9 м/с. YOLOv8 для режима подхода к объекту.
+- **Архитектура:** 3-состояния: FOLLOW (UWB) → APPROACH (YOLO) → HOLD → FOLLOW
+- **Якорей:** 1 на роботе + 1 тег (НЕ трилатерация — один якорь, расстояние+угол)
+- **Что берём:** Параметры FollowController (мёртвая зона 1.2м, smooth_alpha=0.2), паттерн поведенческого FSM, мониторинг UWB-кнопки
+- **Применимость:** ⭐⭐⭐ (только архитектурные паттерны, аппаратно несовместимо)
 
-#### 14.2.2 kk9six/dw3000 — ESP32 UWB DW3000 (NAIST)
+#### 14.2.2 kk9six/dw3000 — ESP32 UWB DW3000 (NAIST, Япония)
 - **URL:** https://github.com/kk9six/dw3000
-- **Language:** C++ (PlatformIO) | **Stars:** 31 | **Paper:** UMotion — CVPR 2025
-- **UWB modules:** Makerfabs ESP32 DW3000 (DW3000 chip)
-- **Algorithm:** Anchor-Tag (AT) DS-TWR + SS-TWR; Distance-Matrix (DM) mode for all-to-all ranging
-- **Modes:** \ — 1 tag + up to 6 anchors, double-sided TWR. \ — all nodes measure distances to all others.
-- **Controller:** ESP32 per module
-- **Key files:** \ (TWR protocol), \ (distance matrix)
-- **What we can take:** Production-quality DS-TWR implementation, optimal inter-distance ranging protocol, anchor-tag scheduling. The ranging protocol code can serve as reference for BU04 custom firmware.
-- **Applicability to BU04:** ⭐⭐⭐⭐ (DW3000 chip is same in BU04, protocol directly portable)
+- **Язык:** C++ (PlatformIO) | **Звёзд:** 31 | **Статья:** UMotion — CVPR 2025
+- **Модули:** Makerfabs ESP32 DW3000 (чип DW3000)
+- **Алгоритм:** Anchor-Tag (AT) DS-TWR + SS-TWR; режим Distance-Matrix (DM) для all-to-all ranging
+- **Режимы:** `at_dstwr` — 1 тег + до 6 якорей, double-sided TWR. `dm_dstwr` — все узлы измеряют расстояния друг до друга
+- **Ключевые файлы:** `src/at_dstwr/uwb.cpp` (протокол TWR), `src/dm_dstwr/uwb.cpp` (матрица расстояний)
+- **Что берём:** Production-quality реализация DS-TWR, optimal inter-distance ranging protocol, планирование anchor-tag. Код протокола — референс для кастомной прошивки BU04
+- **Применимость:** ⭐⭐⭐⭐ (чип DW3000 тот же в BU04, протокол напрямую портируем)
 
-#### 14.2.3 Makerfabs ESP32-UWB-DW3000 (Reference)
+#### 14.2.3 Makerfabs ESP32-UWB-DW3000 (Референсная библиотека)
 - **URL:** https://github.com/Makerfabs/Makerfabs-ESP32-UWB-DW3000
-- **Language:** C++ (Arduino) | **Stars:** 154 | **Forks:** 54
-- **UWB modules:** Makerfabs ESP32UWB3000 (ESP32 + DW3000)
-- **Algorithm:** Basic range_tx/range_rx examples (single TWR pair). NOT multi-anchor.
-- **Library:** DW3000 library developed by NConcepts, maintained by Makerfabs
-- **Controller:** ESP32 per module (Arduino framework)
-- **Key files:** \ — hardware abstraction layer, \ — TX/RX ranging examples
-- **What we can take:** The DW3000 library is the most widely-used open-source driver for DW3000. Can be adapted from ESP32 Arduino to STM32 (BU04 internal STM32F103).
-- **Applicability to BU04:** ⭐⭐⭐ (library reference, but BU04 is UART AT-command not SPI-direct)
+- **Язык:** C++ (Arduino) | **Звёзд:** 154 | **Форков:** 54
+- **Библиотека:** DW3000 от NConcepts, поддерживается Makerfabs
+- **Примеры:** range_tx/range_rx — базовое измерение расстояния (НЕ multi-anchor)
+- **Ключевые файлы:** `Dw3000/src/dw3000_device_api.cpp` — HAL, `example/range/` — примеры TX/RX
+- **Что берём:** Самая распространённая open-source библиотека DW3000. Можно адаптировать с ESP32 Arduino на STM32 (внутренний STM32F103 в BU04)
+- **Применимость:** ⭐⭐⭐ (референс библиотеки, но BU04 работает через UART AT-команды, не прямой SPI)
 
 #### 14.2.4 kimkihyun97/Hubito — UWB Human Following Robot
 - **URL:** https://github.com/kimkihyun97/Hubito
-- **Language:** — (need deeper analysis) | **Stars:** —
-- **Description:** UWB-based human following robot. Korean university project.
-- **What we can take:** Another real implementation to study — especially the anchor placement and following algorithm.
-- **Applicability to BU04:** ⭐⭐⭐ (concept + architecture reference)
+- **Описание:** UWB-based human following robot. Корейский университетский проект.
+- **Применимость:** ⭐⭐⭐ (концепт + архитектурный референс)
 
-#### 14.2.5 ESP32-DW3000-AppleNearbyInteraction
-- **URL:** https://github.com/maa-x/ESP32-DW3000-AppleNearbyInteraction
-- **Language:** C++ (Arduino) | **Stars:** —
-- **UWB:** DW3000 + Apple U1 interoperability. Uses same DW3000 library.
-- **What we can take:** Proves DW3000 works with Apple U1 ecosystem. Relevant if future integration with iPhone UWB tag is desired.
-- **Applicability to BU04:** ⭐⭐ (future Apple ecosystem integration)
+#### 14.2.5 KunYi/esp32-uwb-positioning-system — Многоякорная UWB система
+- **URL:** https://github.com/KunYi/esp32-uwb-positioning-system
+- **Описание:** 2-10 якорей, веб-визуализация, симулятор, ESP32 + DW3000
+- **Что берём:** Production-quality multi-anchor система с веб-интерфейсом. Архитектура масштабирования якорей
+- **Применимость:** ⭐⭐⭐⭐⭐ (самый близкий аналог к нашей архитектуре)
 
-#### 14.2.6 esphome-uwb-dw3000
-- **URL:** https://github.com/realzoulou/esphome-uwb-dw3000
-- **Language:** C++ (ESPHome) | **Stars:** —
-- **Key file:** \ — practical antenna delay calibration guide for DW3000
-- **What we can take:** Antenna delay calibration procedure documented step-by-step. Directly applicable to BU04 RNGOFF calibration.
-- **Applicability to BU04:** ⭐⭐⭐⭐ (calibration method is chip-level, same for BU04)
+#### 14.2.6 Roiquiem/MaUWB_DW3000-with-STM32-AT-Command
+- **URL:** https://github.com/Roiquiem/MaUWB_DW3000-with-STM32-AT-Command
+- **Описание:** STM32 + DW3000 с AT-командами. MaUWB — ещё один производитель DW3000 модулей
+- **Что берём:** Реализация AT-команд на STM32 — прямой референс для кастомизации BU04 прошивки
+- **Применимость:** ⭐⭐⭐⭐⭐ (STM32 + AT-команды + DW3000 — точь-в-точь наша архитектура)
 
----
+#### 14.2.7 Другие найденные проекты
 
-### 14.3 Alternative Approaches & Comparisons
-
-| # | Resource | URL | Type | Key Insight |
-|---|----------|-----|------|-------------|
-| 1 | **Qorvo Forum: Antenna Delay in DW3000 TWR** | forum.qorvo.com/t/17255 | Forum | Practical register-level steps for setting antenna delay values |
-| 2 | **NiceRF: DW3000 UWB Indoor Positioning** | nicerf.com/news/dw3000-uwb | Article | TWR calibration guide, anchor placement recommendations |
-| 3 | **Bluetooth.com.cn: Precise TWR with DW3000** | bluetooth.com.cn/en/.../21912 | Article | Register-level calibration and distance estimation optimization |
-| 4 | **cliansang/positioning-algorithms-for-uwb-matlab** | github.com/cliansang | GitHub | MATLAB implementations: trilateration, multilateration, Kalman, EKF for UWB |
-| 5 | **Qorvo Forum: Trilateration Calculation Method** | forum.qorvo.com/t/9003 | Forum | Engineer discussion on practical trilateration implementation |
-| 6 | **MDPI: Improved Trilateration with Anchor Node** | mdpi.com/1424-8220/22/16/6085 | Paper | Weighted trilateration algorithm with better accuracy than basic LS |
-| 7 | **Positioning Algorithms for UWB in MATLAB** | github.com/cliansang | GitHub | Full MATLAB suite: TOA, TDOA, RSSI, Kalman filtering |
-| 8 | **NTU Singapore: LIDAR+UWB Robot Following** | dr.ntu.edu.sg | Paper | Hybrid LIDAR-UWB approach for robust following |
-
-**PDOA vs TWR comparison (from search findings):**
-- **PDOA:** ±60° angular FOV per BU04, ±10-15° accuracy, needs line-of-sight. Single anchor can measure angle. Good for 2D plane where tag stays in front.
-- **TWR:** 360° coverage (with directional antennas arranged in triangle), distance accuracy ±10cm. Needs 3 anchors for triangulation. Works through some obstacles.
-- **Our decision (D2):** TWR wins for robot following — 360° coverage essential when person walks around robot.
-
-**TWR accuracy data (APS011 + community):**
-- DS-TWR (Double-Sided): clock drift error ~1-3cm at 20ppm crystals
-- SS-TWR (Single-Sided): clock drift error ~20-60cm at 20ppm — UNACCEPTABLE
-- Antenna delay: ~515ns (DW3000 typical), ~1ns calibration needed for ±30cm → requires per-module calibration
-- Calibration distance: 2m recommended (APS011 Table 3)
+| Проект | URL | Тип | Ценность |
+|--------|-----|-----|----------|
+| **L348350841/DW3000** | github.com/L348350841/DW3000 | UWB定位 | ⭐⭐⭐⭐ |
+| **2411752523/UWB-Positioning-Car** | github.com/2411752523/UWB-Positioning-Car | UWB小车 | ⭐⭐⭐ |
+| **DhamuVkl/ESP32-DWM3000-UWB-Indoor-RTLS-Tracker** | github.com/DhamuVkl | RTLS | ⭐⭐⭐⭐ |
+| **KlemenBr/uwb_positioning** | github.com/KlemenBr/uwb_positioning | Обработка | ⭐⭐⭐ |
+| **krebsbstn/uwb-tracking** | github.com/krebsbstn/uwb-tracking | Трекинг | ⭐⭐⭐ |
+| **zerocompany/UWB-List** | github.com/zerocompany/UWB-List | Курируемый список | ⭐⭐⭐⭐⭐ |
+| **ESP32-DW3000-AppleNearbyInteraction** | github.com/maa-x | Apple U1 | ⭐⭐ |
+| **esphome-uwb-dw3000** | github.com/realzoulou | ESPHome | ⭐⭐⭐⭐ |
 
 ---
 
-### 14.4 AI-Thinker BU Module Series
+### 14.3 Альтернативные подходы и сравнения
 
-**Discovery:** Ai-Thinker has official documentation portal at https://docs.ai-thinker.com/en/uwb_1/
+| # | Ресурс | URL | Тип | Ключевой вывод |
+|---|--------|-----|-----|----------------|
+| 1 | **Qorvo Forum: Antenna Delay в DW3000 TWR** | forum.qorvo.com/t/17255 | Форум | Практические шаги настройки antenna delay на уровне регистров |
+| 2 | **NiceRF: DW3000 UWB Indoor Positioning** | nicerf.com | Статья | TWR калибровка, рекомендации по размещению якорей |
+| 3 | **Bluetooth.com.cn: Precise TWR with DW3000** | bluetooth.com.cn | Статья | Калибровка на уровне регистров, оптимизация оценки расстояния |
+| 4 | **cliansang/positioning-algorithms-for-uwb-matlab** | github.com/cliansang | GitHub | MATLAB: трилатерация, мультилатерация, Калман, EKF для UWB |
+| 5 | **Qorvo Forum: Trilateration Calculation Method** | forum.qorvo.com/t/9003 | Форум | Обсуждение инженеров — практическая реализация трилатерации |
+| 6 | **MDPI: Improved Trilateration with Anchor Node** | mdpi.com | Статья | Взвешенная трилатерация — лучше чем обычный LS |
+| 7 | **NTU Singapore: LIDAR+UWB Robot Following** | dr.ntu.edu.sg | Статья | Гибрид LIDAR-UWB для надёжного следования |
+| 8 | **arXiv:2403.10194** — UWB на ESP32 и DWM3000 | arxiv.org | Статья (2024) | Система позиционирования UWB на базе ESP32 и DWM3000 |
 
-| Module | DW Chip | Antenna | PDOA | TWR | AT Firmware | Notes |
-|--------|---------|---------|------|-----|-------------|-------|
-| **BU01** | DW1000 | 1× PCB | ❌ | ✅ | v1.x | Oldest, DW1000-based, deprecated |
-| **BU03** | DW3000 | 1× omni (IPEX) | ❌ | ✅ | v1.0.6 | Best for TAG role — omni antenna, no dual-antenna PDOA overhead |
-| **BU04** | DW3000 | 2× PCB (directional) | ✅ | ✅ | v1.0.6 | Best for ANCHOR role — dual antenna PDOA, directional ~120° beam |
-| **BU06** | DW3000? | ? | ? | ? | ? | Newer variant, specs unknown |
-| **BU07** | DW3000? | ? | ? | ? | ? | Newer variant, specs unknown |
+**Сравнение PDOA vs TWR (из результатов поиска):**
+- **PDOA:** ±60° угол обзора на BU04, точность ±10-15°, нужна прямая видимость. Один якорь измеряет угол. Хорошо для 2D плоскости где тег спереди
+- **TWR:** 360° покрытие (с направленными антеннами в треугольнике), точность расстояния ±10см. Нужно 3 якоря для триангуляции. Работает через некоторые препятствия
+- **Наше решение (D2):** TWR — 360° покрытие критично когда человек обходит робота
 
-**Key finding:** BU03 and BU04 use the SAME AT firmware (V1.0.6). The firmware binary is identical — both modules use the same \ and \ table. PDOA commands exist in firmware but only work on BU04 hardware (dual antenna). BU03 silently ignores PDOA-related settings.
-
-**Downloaded specs:**
-- BU03 spec v1.1.1: Attempted from Ai-Thinker OSS (download failed — server timeout)
-- BU04 spec (empere.in): ✅ 1.4MB PDF downloaded
-
----
-
-### 14.5 Downloaded Documentation Status
-
-| Document | File | Status | Size | Source |
-|----------|------|--------|------|--------|
-| DW3000 Datasheet | \ | ✅ NEW | 6.2MB, 255pp | Qorvo/Mouser |
-| DW3000 User Manual (short) | \ | ✅ HAVE | 68KB | Qorvo Forum |
-| DW3000 API Guide | \ | ✅ NEW | 2.3MB | Qorvo Forum |
-| BU04 Spec (English) | \ | ✅ HAVE | 1.4MB | Ai-Thinker |
-| BU04 Spec (Chinese) | \ | ✅ HAVE | 1.5MB | Ai-Thinker |
-| BU03+BU04 AT Commands | \ | ✅ HAVE | 340KB | Ai-Thinker |
-| BU04 Spec (empere.in) | \ | ✅ NEW | 1.4MB | empere.in |
-| Qorvo APS011 | \ | ✅ HAVE | 612KB | Qorvo |
-| Qorvo APS014 | \ | ✅ HAVE | 412KB | Qorvo |
-| Qorvo APS017 | \ | ✅ HAVE | 544KB | Qorvo |
-| Qorvo APH301 | \ | ✅ HAVE | 1.5MB | Qorvo |
-| Patent CN105828431A | \ | ✅ HAVE | 392KB | Google Patents |
-| UWBTracker (ETH) | \ | ✅ HAVE | 804KB | ETH Zurich |
-| IFAC 2024 Hybrid | \ | ✅ HAVE | 656KB | ScienceDirect |
-| MDPI Polar Robot | \ | ✅ HAVE | 7.7MB | MDPI |
-| UWB Observer Paper | \ | ✅ HAVE | 584KB | Cloudfront |
-| IEEE Hybrid UWB+Vision | \ | ✅ HAVE | 52KB | IEEE |
-| PMC8838499 | \ | ❌ CORRUPT | 1.8KB HTML | PubMed Central redirect |
-
-**Total: 18 PDFs, ~25MB**
+**Данные точности TWR (APS011 + сообщество):**
+- DS-TWR (Double-Sided): ошибка дрейфа часов ~1-3см при кварцах 20ppm
+- SS-TWR (Single-Sided): ошибка дрейфа часов ~20-60см при 20ppm — НЕПРИЕМЛЕМО
+- Antenna delay: ~515нс (типичный DW3000), нужна калибровка ~1нс для ±30см → требуется поканальная калибровка
+- Калибровочное расстояние: 2м рекомендуется (APS011 Таблица 3)
 
 ---
 
-### 14.6 APS011 DS-TWR Analysis
+### 14.4 Найденные патенты (Google Patents + SIPO)
 
-**Source:** Qorvo APS011 "Sources of Error in Two-Way Ranging (TWR) Schemes" (22 pages)
+| Патент | Название | Год | Ключевое утверждение | Релевантность |
+|--------|----------|-----|---------------------|---------------|
+| CN105828431A | UWB autonomous following robot positioning method | 2016 | Аналитическая формула с 3 базовыми станциями (НАШ референс) | ⭐⭐⭐⭐⭐ |
+| CN113282085A | Robot following system based on UWB | 2021 | UWB+vision fusion для следования | ⭐⭐⭐⭐ |
+| CN116300613A | UWB+IMU intelligent following service robot | 2023 | Мульти-сенсор, behavior-aware control | ⭐⭐⭐⭐ |
+| CN115239759A | Mobile robot following based on vision + UWB | 2022 | Визуально-UWB гибрид, re-identification цели | ⭐⭐⭐ |
+| CN114625122A | Robot following + obstacle avoiding with UWB | 2022 | Планирование пути с объездом препятствий по UWB | ⭐⭐⭐⭐ |
+| US20230008482A1 | Object following robot using UWB | 2023 | US патент на UWB следование с несколькими якорями | ⭐⭐⭐⭐ |
+| KR20230007877A | Method for object following robot using UWB | 2023 | Корейский вариант — Samsung? | ⭐⭐⭐ |
 
-**DS-TWR Formula (Symmetric Double-Sided TWR):**
+**Вывод из патентного ландшафта:** CN105828431A (2016, наш референс) — foundational patent для аналитической 3-якорной трилатерации. Новые патенты (2021-2023) ФОКУСИРУЮТСЯ на UWB+vision/IMU fusion — подтверждает что чисто UWB следование это решённая задача, а передний край это мульти-сенсорная интеграция. Наш v1 подход (чистый UWB с аналитической формулой) — правильная стартовая точка; сенсорный фьюжн это v2+.
 
-The DS-TWR method uses 3 messages to eliminate clock drift:
-
-Where T_prop = time of flight (true distance = T_prop × c), T_round = round-trip time, T_reply = reply delay.
-
-**Error Sources (APS011 Table):**
-
-| Error Source | Magnitude | Compensation Method |
-|-------------|-----------|---------------------|
-| Clock drift (20ppm crystal) | ±2-3cm for DS-TWR, ±20-60cm for SS-TWR | Use DS-TWR (not SS-TWR); SDS-TWR[4] variant for better accuracy |
-| Signal path (multipath) | ±5-50cm depending on environment | Use leading edge detection, increase preamble length |
-| Noise (SNR-dependent) | ±1-5cm typical | Average multiple measurements, use higher PRF |
-| Range bias (Friis path loss) | Frequency-dependent | Apply bias correction table (APS011 Figure 11) |
-
-**Calibration Procedure (APS011 + APS014):**
-1. Place anchor and tag at EXACTLY 2.000m distance (measured with laser/ruler)
-2. Collect 100+ TWR measurements in DS-TWR mode
-3. Compute mean error: 4. Convert to antenna delay correction: \ where c = 0.2997 m/ns
-5. Apply: AT+RNGOFF=\<correction_cm\> (BU04 AT firmware) OR \ (SDK)
-6. Repeat measurement — verify residual error < ±5cm
-
-**Calibration distances by channel (APS011 Table 3):**
-| Channel | PRF | Recommended Cal Distance |
-|---------|-----|-------------------------|
-| 5 (6.5GHz) | 64MHz | 2.0m |
-| 9 (8GHz) | 64MHz | 2.0m |
-
-**Our implementation plan:**
-1. Set BU04 to TWR mode: AT+SETUWBMODE=2
-2. Place tag at 2.000m from each anchor A, B, C in turn
-3. Collect 100 range measurements per anchor: AT+DISTANCE
-4. Compute per-anchor RNGOFF: 5. Save: AT+SAVE
-6. Expected accuracy after calibration: ±10cm (patent claim) to ±15cm (community reports)
+**Коммерческая патентная активность (китайские компании):**
+- **耀晟智能 (YaoSheng AI)** — патент 2025 на UWB робота-следователя с behavior perception + dynamic control
+- **华为 (Huawei)** — патент на оптимизацию UWB связи (chip-level)
+- **汇顶科技 (Goodix)** — патент на UWB чип + метод связи
 
 ---
 
-### 14.7 BU03 vs BU04 Firmware Comparison
+### 14.5 Китайские разработки и ресурсы
 
-**Source:** STM32F103-BU0x_SDK/Components/APP/cmd_fn.c (Ai-Thinker SDK)
+#### GitHub — китайскоязычные UWB проекты
 
-**Complete AT Command Table (29 commands):**
+| Проект | Описание | Применимость |
+|--------|----------|-------------|
+| **L348350841/DW3000** | UWB 人员定位 — позиционирование персонала, DW3000 + STM32 | ⭐⭐⭐⭐ |
+| **Roiquiem/MaUWB_DW3000-with-STM32-AT-Command** | STM32 AT Command интерфейс для MaUWB DW3000 | ⭐⭐⭐⭐⭐ Прямой референс! |
+| **2411752523/UWB-Positioning-Car** | UWB小车 — планирование пути по координатам UWB | ⭐⭐⭐ |
+| **KunYi/esp32-uwb-positioning-system** | 2-10 якорей, веб-виз, симулятор, ESP32+DW3000 | ⭐⭐⭐⭐⭐ |
 
-| # | Command | BU03 | BU04 | TWR Mode | PDOA Mode | Description |
-|---|---------|------|------|----------|-----------|-------------|
-| 1 | AT | ✅ | ✅ | ✅ | ✅ | Test AT framework |
-| 2 | AT+GETVER | ✅ | ✅ | ✅ | ✅ | Get software version |
-| 3 | AT+SAVE | ✅ | ✅ | ✅ | ✅ | Save config to NVM |
-| 4 | AT+RESTART | ✅ | ✅ | ✅ | ✅ | Software reset |
-| 5 | AT+RESTORE | ✅ | ✅ | ✅ | ✅ | Factory reset |
-| 6 | AT+GETCFG | ✅ | ✅ | ✅ | ✅ | Get configuration |
-| 7 | AT+SETCFG | ✅ | ✅ | ✅ | ✅ | Set configuration |
-| 8 | AT+GETDEV | ✅ | ✅ | ✅ | ✅ | Get device info |
-| 9 | AT+SETDEV | ✅ | ✅ | ✅ | ✅ | Set device info |
-| 10 | AT+GETWORKMODE | ✅ | ✅ | ✅ | ✅ | Get work mode (0=normal, 1=factory) |
-| 11 | AT+SETWORKMODE | ✅ | ✅ | ✅ | ✅ | Set work mode |
-| 12 | AT+GETSENSOR | ✅ | ✅ | ✅ | ✅ | Get LIS2DH12 accelerometer |
-| 13 | AT+TESTLED | ✅ | ✅ | ✅ | ✅ | Test LED |
-| 14 | AT+TESTOLED | ✅ | ✅ | ✅ | ✅ | Test OLED display |
-| **15** | **AT+DISTANCE** | ✅ | ✅ | ✅ | ❌ | **Get TWR distance — KEY for trilateration** |
-| 16 | AT+DECA\$ | ✅ | ✅ | ✅ | ✅ | Raw Decawave register command |
-| 17 | AT+GETDLIST | ✅ | ✅ | ✅ | ✅ | Get device list |
-| 18 | AT+GETKLIST | ✅ | ✅ | ✅ | ✅ | Get known devices |
-| 19 | AT+ADDTAG | ✅ | ✅ | ✅ | ✅ | Add tag to anchor list |
-| 20 | AT+DELTAG | ✅ | ✅ | ✅ | ✅ | Delete tag from list |
-| 21 | AT+PDOAOFF | ❌ | ✅ | ❌ | ✅ | Set PDOA offset calibration |
-| 22 | AT+RNGOFF | ✅ | ✅ | ✅ | ❌ | Set range offset calibration |
-| 23 | AT+FILTER | ✅ | ✅ | ✅ | ✅ | Set filter parameters |
-| 24 | AT+PDOASETCFG | ❌ | ✅ | ❌ | ✅ | Set PDOA configuration |
-| 25 | AT+PDOAGETCFG | ❌ | ✅ | ❌ | ✅ | Get PDOA configuration |
-| 26 | AT+UARTRATE | ✅ | ✅ | ✅ | ✅ | Set UART baud rate |
-| **27** | **AT+USER_CMD** | ✅ | ✅ | ✅ | ✅ | **Custom user command — extension pointdual_monitor.py* |
-| 28 | AT+GETUWBMODE | ✅ | ✅ | ✅ | ✅ | Get UWB mode (1=PDOA, 2=TWR) |
-| 29 | AT+SETUWBMODE | ✅ | ✅ | ✅ | ✅ | Set UWB mode |
+#### Китайские технические статьи (CSDN, Zhihu, Bilibili)
 
-**SDK Source Analysis:**
+| Ресурс | Платформа | Содержание |
+|--------|-----------|------------|
+| UWB自动跟随技术原理、算法融合、优化 | CSDN | Глубокий разбор UWB auto-follow: принцип TWR, математика трилатерации, Калман, типичные грабли |
+| DW3000+STM32定位通信模块设计 | CSDN | Проектирование модуля позиционирования DW3000+STM32 со схемами |
+| BU04 UWB室内定位测距模块教程 | CSDN/Zhihu | Туториал по BU04: AT-команды, данные замеров |
+| 安信可UWB模组智能跟随 | 什么值得买 | Гайд по Ai-Thinker UWB follow-me с практической настройкой |
+| DW3000+STM32 B站视频 | Bilibili | Видео-туториал: проектирование и тестирование DW3000 |
+| UWB与毫米波雷达融合智能跟随小车 | CSDN | UWB + mmWave radar fusion для машинки-следователя |
+| 基于UWB定位的智能跟随车系统设计 | JICES (2023) | Академическая статья: дизайн системы UWB следования |
 
-1. **NO conditional compilation:** No \ / \ in cmd_fn.c. Same firmware binary for both modules.
-2. **PDOA functions** (f_pdoaoff, f_rngoff, f_pdoasetcfg, f_pdoagetcfg) are compiled in but BU03 hardware has no dual antenna → PDOA commands give HW error on BU03.
-3. **AT+USER_CMD** (f_user_cmd) is the extension point for custom commands. Currently empty/placeholder. We add our button handler here.
-4. **known_commands[]** table at line ~871 in cmd_fn.c — simple array of {"AT+CMD", function_ptr} pairs. Adding new commands = adding 1 line.
-5. **dwt_writetxdata()** available via underlying DW3000 HAL — SDK has full TX path. Adding data-over-UWB is ~20 lines in cmd_fn.c.
+#### Китайские научные статьи
 
-**Verdict:**
-- **BU03 as TAG:** ✅ YES. Omni antenna (IPEX) gives better 360° coverage. No PDOA needed for tag. Stock AT+DISTANCE works perfectly for TWR responses.
-- **BU04 as ANCHOR:** ✅ YES. Directional 120° beam × 3 arranged in triangle = 360° combined coverage. TWR ranging works fine even without using PDOA features.
-- **BU04 as TAG:** ✅ Possible but overkill — dual antenna and PDOA capability unused in tag role. Omni BU03 is better.
-- **Custom button command:** Add \ handler in f_user_cmd or new function → GPIO read → \. ~20 lines of C.
+| Статья | Источник | Год | Ключевой вывод |
+|--------|----------|-----|----------------|
+| 智能跟随车 UWB定位系统设计 | JICES | 2023 | Полный дизайн системы: UWB позиционирование + управление машиной, тестированная точность |
+| UWB+毫米波雷达融合跟随小车 | CSDN/Журнал | 2024 | Мульти-сенсор: UWB для позиции + mmWave для детекции препятствий |
+| 华为UWB通信测距优化 | Sohu/Huawei | 2024 | Оптимизация ranging на уровне чипа — показывает инвестиции индустрии |
 
 ---
 
-### 14.8 PMC8838499 — Component-Wise Error Correction
+### 14.6 Анализ APS011 — формула DS-TWR и источники ошибок
 
-**Status:** ❌ PDF download FAILED — PubMed Central returns HTML redirect, not PDF. Original file was 1.8KB HTML stub.
+**Источник:** Qorvo APS011 "Sources of Error in Two-Way Ranging (TWR) Schemes" (22 стр)
 
-**Attempted URLs:**
-- https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8838499/ → HTML page
-- https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8838499/pdf/ → HTML redirect (same 1.8KB)
+**Формула DS-TWR (Symmetric Double-Sided TWR):**
+DS-TWR использует 3 сообщения для устранения дрейфа часов:
+```
+T_prop = (T_round1 × T_round2 − T_reply1 × T_reply2) / (T_round1 + T_round2 + T_reply1 + T_reply2)
+```
+Где T_prop = время полёта (истинное расстояние = T_prop × c), T_round = round-trip время, T_reply = задержка ответа.
 
-**Paper metadata (from PubMed/HTML):**
-- Title: "Component-Wise Error Correction for UWB Target Following" (or similar)
-- PMC ID: 8838499
-- Published: ~2022
-- Journal: Sensors (MDPI) or similar
+**Источники ошибок (APS011):**
 
-**What we know from CONTEXT.md and RESEARCH.md prior analysis:**
-- Method: Component-wise error correction — decomposes positioning error into individual components (antenna delay, clock drift, multipath bias) and corrects each separately
-- Claimed accuracy: ±X cm (specifics need paper access)
-- Applicability to our project: Potentially high — if it provides per-component calibration method better than simple antenna delay
+| Источник ошибки | Величина | Метод компенсации |
+|----------------|----------|-------------------|
+| Дрейф часов (кварц 20ppm) | ±2-3см для DS-TWR, ±20-60см для SS-TWR | Использовать DS-TWR; вариант SDS-TWR[4] для лучшей точности |
+| Задержка антенны | 515нс типично (≈77м эквивалент!) | Калибровать по процедуре APS014; установить через `dwt_setantennadelay()` или AT+RNGOFF |
+| Многолучевость | ±5-50см зависит от среды | Использовать leading edge detection, увеличить длину преамбулы |
+| Шум (зависит от SNR) | ±1-5см типично | Усреднять несколько измерений, выше PRF |
+| Range bias (Friis path loss) | Частотно-зависимый | Применить таблицу bias correction (APS011 Figure 11) |
 
-**Action needed:** Try alternative access methods:
-1. MDPI Sensors journal direct: https://www.mdpi.com/ — search PMC8838499
-2. Google Scholar: "component-wise error correction UWB target following"
-3. Sci-Hub (if legal in jurisdiction)
-4. Email corresponding author for preprint
+**Процедура калибровки (APS011 + APS014):**
+1. Разместить якорь и тег на расстоянии РОВНО 2.000м (измерить лазером/рулеткой)
+2. Собрать 100+ замеров TWR в режиме DS-TWR
+3. Вычислить среднюю ошибку: `bias = mean(измеренное) − 2.000м`
+4. Перевести в коррекцию задержки: `delay_correction_ns = bias_m / c` где c = 0.2997 м/нс
+5. Применить: AT+RNGOFF=<correction_cm> (BU04 AT прошивка) ИЛИ `dwt_setantennadelay()` (SDK)
+6. Повторить замер — проверить остаточную ошибку < ±5см
 
-**Interim verdict:** DEFER — not essential for v1. The patent CN105828431A analytic formula + APS011 DS-TWR calibration should suffice for ±10-15cm accuracy. Component-wise correction can be added in v2 if accuracy insufficient.
+**Калибровочные расстояния по каналам (APS011 Таблица 3):**
+| Канал | PRF | Рекомендуемое расстояние |
+|-------|-----|-------------------------|
+| 5 (6.5GHz) | 64MHz | 2.0м |
+| 9 (8GHz) | 64MHz | 2.0м |
 
----
-
-### 14.9 Comparative Analysis: GitHub UWB Robot Projects
-
-| Project | UWB Chip | Algorithm | Anchors on Robot | Controller | Accuracy Claimed | Architecture Quality | Our Use-Case Match |
-|---------|----------|-----------|-----------------|------------|-------------------|---------------------|-------------------|
-| unitree-go2-follow | Go2 built-in (DW3000?) | Single distance+angle | 1 | Go2 onboard (ARM Linux) | ~20cm est. | ⭐⭐⭐⭐ Python, clean FSM | ⭐⭐⭐ (concept only) |
-| kk9six/dw3000 | DW3000 | DS-TWR, 1tag+N anchors | 0 (infrastructure) | ESP32 | ~10cm (academic) | ⭐⭐⭐⭐⭐ C++ PlatformIO, production quality | ⭐⭐⭐⭐ (protocol ref) |
-| Makerfabs DW3000 | DW3000 | Basic TWR pair only | 0 | ESP32 | ~10cm | ⭐⭐⭐ Ref library | ⭐⭐⭐ (driver ref) |
-| Hubito | DW3000? | TWR following | ? | ? | ? | ⭐⭐⭐ (Korean uni) | ⭐⭐⭐ (concept) |
-| ESP32-AppleNearby | DW3000 | Apple U1 interop | N/A | ESP32 | N/A | ⭐⭐⭐ | ⭐⭐ (future) |
-
-**Key take-away:** NO existing open-source project implements 3-anchor-on-robot trilateration for BU04 modules. Our project is novel in combining:
-1. 3× BU04 anchors on robot (equilateral triangle)
-2. RP2040 co-processor with PIO UARTs
-3. Patent CN105828431A analytic formula
-4. AT+DISTANCE over stock firmware (no custom SPI code)
-5. Data-over-UWB for button commands (AT+USER_CMD extension)
-
-This combination does NOT exist in any public repo — we are building something new.
+**Наш план реализации:**
+1. Установить BU04 в режим TWR: AT+SETUWBMODE=2
+2. Разместить тег на 2.000м от каждого якоря A, B, C по очереди
+3. Собрать 100 замеров расстояния с каждого якоря: AT+DISTANCE
+4. Вычислить RNGOFF для каждого якоря: `AT+RNGOFF=<round(mean_error_cm)>`
+5. Сохранить: AT+SAVE
+6. Ожидаемая точность после калибровки: ±10см (патент) до ±15см (сообщество)
 
 ---
 
-## 15. New Open Questions (from search)
+### 14.7 Сравнение прошивок BU03 vs BU04
 
-1. **DW3000 Full User Manual:** Is the ~200pp version behind Qorvo NDA? Can we get it via Qorvo sales/support?
-2. **BU06/BU07:** What are these newer Ai-Thinker modules? Do they offer better antennas or firmware?
-3. **RP2040 PIO UART reliability:** Has anyone tested 3 simultaneous UART RX via PIO at 115200 with BU04 data streaming?
-4. **Triangle size optimization:** Patent says a=30-50cm. What is optimal for our specific robot chassis? Wider base = better angular resolution but harder to mount.
-5. **Multipath indoors:** APS011 shows 5-50cm multipath error. How does this affect our trilateration in typical home/office environment?
+**Источник:** STM32F103-BU0x_SDK/Components/APP/cmd_fn.c (Ai-Thinker SDK)
 
----
+**Полная таблица AT-команд (29 команд):**
 
-### 14.10 Patents Found (Google Patents + SIPO)
+| # | Команда | BU03 | BU04 | TWR | PDOA | Описание |
+|---|---------|------|------|-----|------|----------|
+| 1 | AT | ✅ | ✅ | ✅ | ✅ | Тест AT-фреймворка |
+| 2 | AT+GETVER | ✅ | ✅ | ✅ | ✅ | Версия ПО |
+| 3 | AT+SAVE | ✅ | ✅ | ✅ | ✅ | Сохранить конфигурацию |
+| 4 | AT+RESTART | ✅ | ✅ | ✅ | ✅ | Перезагрузка |
+| 5 | AT+RESTORE | ✅ | ✅ | ✅ | ✅ | Сброс к заводским |
+| 6 | AT+GETCFG | ✅ | ✅ | ✅ | ✅ | Получить конфигурацию |
+| 7 | AT+SETCFG | ✅ | ✅ | ✅ | ✅ | Установить конфигурацию |
+| 8 | AT+GETDEV | ✅ | ✅ | ✅ | ✅ | Информация об устройстве |
+| 9 | AT+SETDEV | ✅ | ✅ | ✅ | ✅ | Установить параметры устройства |
+| 10 | AT+GETWORKMODE | ✅ | ✅ | ✅ | ✅ | Режим работы (0=норм, 1=заводской) |
+| 11 | AT+SETWORKMODE | ✅ | ✅ | ✅ | ✅ | Установить режим |
+| 12 | AT+GETSENSOR | ✅ | ✅ | ✅ | ✅ | Данные LIS2DH12 акселерометра |
+| 13 | AT+TESTLED | ✅ | ✅ | ✅ | ✅ | Тест светодиода |
+| 14 | AT+TESTOLED | ✅ | ✅ | ✅ | ✅ | Тест OLED дисплея |
+| **15** | **AT+DISTANCE** | ✅ | ✅ | ✅ | ❌ | **Получить TWR расстояние — КЛЮЧ для трилатерации** |
+| 16 | AT+DECA$ | ✅ | ✅ | ✅ | ✅ | Прямая команда Decawave |
+| 17 | AT+GETDLIST | ✅ | ✅ | ✅ | ✅ | Список устройств |
+| 18 | AT+GETKLIST | ✅ | ✅ | ✅ | ✅ | Список известных устройств |
+| 19 | AT+ADDTAG | ✅ | ✅ | ✅ | ✅ | Добавить тег |
+| 20 | AT+DELTAG | ✅ | ✅ | ✅ | ✅ | Удалить тег |
+| 21 | AT+PDOAOFF | ❌ | ✅ | ❌ | ✅ | Калибровка PDOA смещения |
+| 22 | AT+RNGOFF | ✅ | ✅ | ✅ | ❌ | Калибровка смещения дальности |
+| 23 | AT+FILTER | ✅ | ✅ | ✅ | ✅ | Параметры фильтра |
+| 24 | AT+PDOASETCFG | ❌ | ✅ | ❌ | ✅ | Установить PDOA конфигурацию |
+| 25 | AT+PDOAGETCFG | ❌ | ✅ | ❌ | ✅ | Получить PDOA конфигурацию |
+| 26 | AT+UARTRATE | ✅ | ✅ | ✅ | ✅ | Скорость UART |
+| **27** | **AT+USER_CMD** | ✅ | ✅ | ✅ | ✅ | **Пользовательская команда — точка расширения!** |
+| 28 | AT+GETUWBMODE | ✅ | ✅ | ✅ | ✅ | Режим UWB (1=PDOA, 2=TWR) |
+| 29 | AT+SETUWBMODE | ✅ | ✅ | ✅ | ✅ | Установить режим UWB |
 
-| Patent ID | Title | Year | Key Claim | Relevance |
-|-----------|-------|------|-----------|-----------|
-| CN105828431A | UWB autonomous following robot positioning method | 2016 | 3-base-station analytic formula (OUR reference) | ⭐⭐⭐⭐⭐ |
-| CN113282085A | Robot following system and method based on UWB | 2021 | UWB+vision fusion for following | ⭐⭐⭐⭐ |
-| CN116300613A | UWB+IMU intelligent following service robot | 2023 | Multi-sensor fusion, behavior-aware control | ⭐⭐⭐⭐ |
-| CN115239759A | Mobile robot following based on vision + UWB | 2022 | Visual+UWB hybrid, target re-identification | ⭐⭐⭐ |
-| CN114625122A | Robot following + obstacle avoiding with UWB | 2022 | UWB-guided obstacle avoidance path planning | ⭐⭐⭐⭐ |
-| US20230008482A1 | Object following robot using UWB | 2023 | US filing of UWB robot following with multiple anchors | ⭐⭐⭐⭐ |
-| KR20230007877A | Method for object following robot using UWB | 2023 | Korean variant — Samsung? | ⭐⭐⭐ |
+**Анализ исходников SDK:**
 
-**Key insight from patent landscape:** CN105828431A (2016, our reference) is the foundational patent for analytic 3-anchor trilateration. Newer patents (2021-2023) all focus on UWB+vision/IMU fusion — confirming that pure UWB following is a solved problem and the frontier is multi-sensor fusion. Our v1 approach (pure UWB analytic formula) is the right starting point; sensor fusion is v2+.
+1. **НЕТ условной компиляции:** Нет `#ifdef BU03` / `#ifdef BU04` в cmd_fn.c. Одинарный бинарный файл прошивки для обоих модулей.
+2. **PDOA функции** (f_pdoaoff, f_rngoff, f_pdoasetcfg, f_pdoagetcfg) скомпилированы, но BU03 аппаратно не имеет двух антенн → PDOA команды дают HW ошибку на BU03.
+3. **AT+USER_CMD** (f_user_cmd) — точка расширения для своих команд. Сейчас пустая. Сюда добавляем обработчик кнопки.
+4. **known_commands[]** таблица на строке ~871 в cmd_fn.c — простой массив пар {"AT+CMD", function_ptr}. Добавить новую команду = 1 строка.
+5. **dwt_writetxdata()** доступна через HAL DW3000 — SDK имеет полный TX путь. Data-over-UWB это ~20 строк в cmd_fn.c.
 
-**Commercial patent activity (Chinese companies):**
-- **耀晟智能 (YaoSheng AI)** — 2025 patent on UWB following robot with behavior perception + dynamic control
-- **华为 (Huawei)** — UWB communication optimization patent (chip-level, not robot-level)
-- **汇顶科技 (Goodix)** — UWB chip + communication method patent
-
-### 14.11 Chinese UWB Robot Projects & Resources
-
-#### GitHub — Chinese-language UWB projects
-
-| Project | URL | Description | Applicability |
-|---------|-----|-------------|---------------|
-| **L348350841/DW3000** | github.com/L348350841/DW3000 | UWB 人员定位 (personnel positioning) — DW3000 + STM32 | ⭐⭐⭐⭐ |
-| **Roiquiem/MaUWB_DW3000-with-STM32-AT-Command** | github.com/Roiquiem/MaUWB_DW3000 | STM32 AT Command interface for MaUWB DW3000 module | ⭐⭐⭐⭐⭐ Directly relevant! AT command parsing on STM32 |
-| **2411752523/UWB-Positioning-Car** | github.com/2411752523/UWB-Positioning-Car | UWB小车 — path planning via UWB coordinates | ⭐⭐⭐ |
-| **KunYi/esp32-uwb-positioning-system** | github.com/KunYi/esp32-uwb-positioning-system | 2-10 anchors, web viz, simulator, ESP32+DW3000 | ⭐⭐⭐⭐⭐ Production-quality multi-anchor system |
-
-#### Chinese technical articles (CSDN, Zhihu, Bilibili)
-
-| Resource | Platform | Content |
-|----------|----------|---------|
-| UWB自动跟随技术原理、算法融合、优化 | CSDN | Full deep-dive on UWB auto-follow: TWR principle, trilateration math, Kalman fusion, common pitfalls |
-| DW3000+STM32定位通信模块设计 | CSDN | Hardware design for DW3000+STM32 positioning module with schematics |
-| BU04 UWB室内定位测距模块教程 | CSDN/Zhihu | BU04 ranging tutorial with AT commands and实测 data |
-| 安信可UWB模组智能跟随 | 什么值得买 | Ai-Thinker UWB module follow-me guide with practical setup |
-| DW3000+STM32 B站视频 | Bilibili | Video tutorial: DW3000 positioning module design + testing |
-| UWB与毫米波雷达融合智能跟随小车 | CSDN | UWB + mmWave radar fusion for following car |
-| 基于UWB定位的智能跟随车系统设计 | JICES Journal (2023) | Academic paper: UWB-based intelligent following car system design |
-
-#### Chinese research papers
-
-| Paper | Source | Year | Key Finding |
-|-------|--------|------|-------------|
-| 智能跟随车 UWB定位系统设计 | JICES | 2023 | Full system design: UWB positioning + car control, tested accuracy |
-| UWB+毫米波雷达融合跟随小车 | CSDN/Journal | 2024 | Multi-sensor: UWB for location + mmWave for obstacle detection |
-| 华为UWB通信测距优化 | Sohu/Huawei | 2024 | Chip-level UWB ranging optimization — not robot-level but shows industry investment |
-
-### 14.12 Additional GitHub/Research Finds (Broad Search Round 2)
-
-| Project | URL | Type | Key Value |
-|---------|-----|------|-----------|
-| **zerocompany/UWB-List** | github.com/zerocompany/UWB-List | Curated list | Comprehensive list of UWB research papers + projects — goldmine for further reading |
-| **KlemenBr/uwb_positioning** | github.com/KlemenBr/uwb_positioning | Code | UWB positioning preprocessing pipeline |
-| **krebsbstn/uwb-tracking** | github.com/krebsbstn/uwb-tracking | Code | UWB tracking implementation |
-| **DhamuVkl/ESP32-DWM3000-UWB-Indoor-RTLS-Tracker** | github.com/DhamuVkl | Code | Real-time location tracker with ESP32+DW3000 |
-| **ETH Zurich UWBTracker** | ait.ethz.ch/uwb-tracker | Research+Code | 4-UWB on drone, IEKF, 10cm — gold standard paper |
-| **arXiv:2505.05903** | arxiv.org | Paper (2025) | Adaptive Robot Localization with UWB Novelty Detection |
-| **Survey: UWB localization for mobile autonomous robots** | ScienceDirect | Paper (2025) | Comprehensive survey — captures entire field state-of-art |
-| **IEEE: Global UWB System for Mobile Robot Localization** | IEEE | Paper (2024) | High-accuracy mobile robot localization with UWB |
-| **arXiv:2403.10194** | arxiv.org | Paper (2024) | UWB Positioning System Based on ESP32 and DWM3000 |
-| **ResearchGate: Hybrid Human Tracking UWB+Monocular** | ResearchGate | Paper (2025) | UWB + monocular camera sensor fusion for following |
-| **PDF: Novel UWB Full-Range Multi-Angle Following Robot** | fyust.edu.cn | Paper (2026) | Chinese university — full-range following with UWB |
-| **PDF: Autonomous Human Tracking UWB for Mobile Robots** | Cloudfront | Paper | Observer-based control approach for UWB following |
-| **ResearchGate: UWB Side-by-Side Following** | ResearchGate | Paper | Adaptable side-by-side human-following with UWB |
+**Вердикт:**
+- **BU03 как ТЕГ:** ✅ ДА. Всенаправленная антенна (IPEX) даёт лучшее 360° покрытие. PDOA не нужен для тега. Stock AT+DISTANCE отлично работает для TWR ответов.
+- **BU04 как ЯКОРЬ:** ✅ ДА. Направленный луч 120° × 3 в треугольнике = 360° комбинированное покрытие. TWR ranging работает без использования PDOA функций.
+- **Кнопка:** Добавить `AT+BUTTON` обработчик в f_user_cmd → читать GPIO → `dwt_writetxdata("BTN:1")`. ~20 строк C.
 
 ---
 
-## 15. New Open Questions (Updated)
+### 14.8 Статус статьи PMC8838499
 
-1. DW3000 Full User Manual behind Qorvo NDA? → Try Qorvo sales@
-2. BU06/BU07 newer Ai-Thinker modules — need specs from docs.ai-thinker.com
-3. RP2040 PIO UART reliability at 3× 115200 with BU04 streaming — empirical test needed
-4. Optimal triangle side a — patent range 30-50cm, test both in Phase 4
-5. Multipath error indoors — APS011 shows 5-50cm, test in actual environment
-6. **MaUWB DW3000 module** (github.com/Roiquiem) — is this another vendor of DW3000 modules? Check compatibility with BU04 AT commands
-7. **耀晟智能 patent (2025)** — commercial UWB following robot — competitor analysis?
-8. **JICES 2023 paper** — full system design for UWB following car — get PDF for architecture reference
-9. **zerocompany/UWB-List** — mine this curated list for additional papers we missed
+**Статус:** ❌ СКАЧИВАНИЕ НЕ УДАЛОСЬ — PubMed Central возвращает HTML редирект, не PDF. Файл был 1.8KB HTML заглушка.
+
+**Что знаем из предварительного анализа:**
+- Метод: Component-wise error correction — декомпозиция ошибки позиционирования на компоненты (antenna delay, clock drift, multipath bias) и коррекция каждого отдельно
+- Заявленная точность: ±X см (нужен доступ к полному тексту)
+
+**Промежуточный вердикт:** ОТЛОЖИТЬ до v2. Патент CN105828431A + калибровка APS011 DS-TWR достаточны для точности ±10-15см в v1.
+
+---
+
+### 14.9 Сравнительный анализ: GitHub UWB роботы-следователи
+
+| Проект | Чип UWB | Алгоритм | Якорей на роботе | Контроллер | Точность | Качество архитектуры | Совпадение с нами |
+|--------|---------|----------|-----------------|------------|----------|---------------------|-------------------|
+| unitree-go2-follow | Go2 встроенный | Один расстояние+угол | 1 | Go2 (ARM Linux) | ~20см | ⭐⭐⭐⭐ Python, чистый FSM | ⭐⭐⭐ |
+| kk9six/dw3000 | DW3000 | DS-TWR, 1тег+N якорей | 0 (инфраструктура) | ESP32 | ~10см | ⭐⭐⭐⭐⭐ C++ PlatformIO | ⭐⭐⭐⭐ |
+| Makerfabs DW3000 | DW3000 | Базовый TWR | 0 | ESP32 | ~10см | ⭐⭐⭐ Реф библиотека | ⭐⭐⭐ |
+| Hubito | DW3000? | TWR following | ? | ? | ? | ⭐⭐⭐ | ⭐⭐⭐ |
+| KunYi UWB | DW3000 | Multi-anchor TWR | 0 | ESP32 | ? | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+| MaUWB DW3000 | DW3000 | AT-команды | ? | STM32 | ? | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+
+**Ключевой вывод:** НЕТ существующего open-source проекта с 3-якорной трилатерацией НА роботе для BU04 модулей. Наш проект НОВЫЙ в комбинации:
+1. 3× BU04 якоря на роботе (равносторонний треугольник)
+2. Сопроцессор RP2040 с PIO UART
+3. Аналитическая формула патента CN105828431A
+4. AT+DISTANCE через стоковую прошивку (без своего SPI кода)
+5. Data-over-UWB для кнопки (расширение AT+USER_CMD)
+
+Этой комбинации нет ни в одном публичном репозитории — мы строим нечто новое.
+
+---
+
+### 14.10 Дополнительные научные статьи (раунд 2 поиска)
+
+| Статья | Источник | Год | Ключевой вывод |
+|--------|----------|-----|----------------|
+| **Adaptive Robot Localization with UWB Novelty Detection** | arXiv:2505.05903 | 2025 | Адаптивная локализация с детекцией новизны — самый свежий research |
+| **Survey: UWB localization for mobile autonomous robots** | ScienceDirect | 2025 | Полный обзор области — state-of-the-art на 2025 год |
+| **Global UWB System for Mobile Robot Localization** | IEEE | 2024 | Высокоточная UWB локализация мобильных роботов |
+| **Hybrid Human Tracking UWB + Monocular Visual** | ResearchGate | 2025 | UWB + монокулярная камера — сенсорный фьюжн |
+| **Novel UWB Full-Range Multi-Angle Following Robot** | fyust.edu.cn | 2026 | Китайский университет — полно-диапазонное следование |
+| **Autonomous Human Tracking UWB for Mobile Robots** | Cloudfront | — | Observer-based control подход |
+| **UWB Side-by-Side Following** | ResearchGate | — | Адаптивное следование бок-о-бок |
+
+---
+
+## 15. Новые открытые вопросы
+
+1. **DW3000 полный User Manual** — за Qorvo NDA? Попробовать запросить через sales@qorvo.com
+2. **BU06/BU07** — что за новые модули Ai-Thinker? Проверить specs на docs.ai-thinker.com
+3. **RP2040 PIO UART надёжность** — 3× UART RX на 115200 одновременно с потоком BU04 — эмпирический тест в Phase 4
+4. **Оптимальный размер треугольника a** — патент говорит 30-50см, протестировать оба в Phase 4
+5. **Многолучевость внутри помещений** — APS011 показывает 5-50см ошибки, проверить в реальной среде
+6. **MaUWB DW3000 модуль** (Roiquiem) — ещё один производитель? Проверить совместимость с BU04 AT-командами
+7. **耀晟智能 патент (2025)** — коммерческий UWB робот-следователь — конкурентный анализ?
+8. **JICES 2023 статья** — полный дизайн UWB машинки-следователя — достать PDF для референса архитектуры
+9. **zerocompany/UWB-List** — дособрать статьи из курируемого списка
