@@ -173,49 +173,77 @@ int f_button(int opt, int argc, char* argv[]) {
 
 ---
 
-## 6. Обзор существующих проектов
-
-### 6.1. Академические работы
-
-| Работа | Учреждение | Год | Суть | Точность |
-|--------|-----------|-----|------|----------|
-| **UWBTracker** | ETH Zurich | 2019 | 4× UWB на дроне + 1 тег, IEKF | 10 см на 4 м |
-| **CN105828431A** | USST Shanghai | 2016 | 3 якоря, аналитическая формула | ±10 см |
-| **IFAC 2024** | VSB-TU Ostrava | 2024 | UWB + RGB-D камера, гибрид | — |
-| **MDPI Polar Robot** | KIRO Korea | 2024 | UWB следование в полярных условиях | — |
-| **IEEE: Side-by-Side** | — | 2023 | UWB адаптивное следование бок-о-бок | — |
-| **IEEE: Vision+UWB** | — | 2024 | Гибридное следование UWB + зрение | — |
-| **IEEE: Observer-based** | — | 2020 | Observer-based контроль для UWB следования | — |
-| **arXiv: UWB Radar Robot** | — | 2025 | UWB радар на мобильном роботе | — |
-| **arXiv: Adaptive Localization** | — | 2025 | Адаптивная UWB локализация с детекцией новизны | — |
-
-### 6.2. Практические реализации (GitHub)
-
-| Проект | Платформа | Алгоритм | Якорей | Сильные стороны |
-|--------|-----------|----------|--------|-----------------|
-| **KunYi/esp32-uwb-positioning** | ESP32 + DW3000 | TWR мульти-якорь | 2-10 | Веб-визуализация, симулятор, production-quality |
-| **kk9six/dw3000** (UMotion CVPR'25) | ESP32 + Makerfabs DW3000 | DS-TWR/SS-TWR, AT+DM режимы | 1 тег + N якорей | Научная публикация, optimal scheduling |
-| **Makerfabs DW3000** | ESP32 Arduino | Базовый TWR | 1 пара | Самая популярная библиотека (154★) |
-| **Roiquiem/MaUWB** | STM32 + DW3000 | AT-команды | ? | Прямой аналог BU04 — STM32+AT+DW3000 |
-| **unitree-go2-follow** | Go2 (Python) | UWB штатный + YOLOv8 | 1 | Готовый FSM, 3 состояния |
-| **Hubito** | ? | TWR following | ? | Корейский университетский проект |
-| **DhamuVkl/RTLS-Tracker** | ESP32 + DW3000 | RTLS трекинг | много | Real-time location tracking |
-
-### 6.3. Китайские разработки
-
-- **CSDN:** Полный туториал по UWB auto-follow — математика трилатерации, Калман, грабли
-- **CSDN:** DW3000+STM32 модуль позиционирования со схемами
-- **Zhihu/什么值得买:** BU04 туториал с AT-командами и замерами
-- **Bilibili:** Видео-туториал DW3000+STM32
-- **JICES Journal (2023):** Система UWB следования — полный дизайн
-- **耀晟智能 (2025):** Коммерческий патент на UWB робота-следователя
-
-### 6.4. Видео-демонстрации (YouTube)
-
-- "Home made person follow robot (UWB)" — youtube.com/watch?v=ohVUM3QEt5Q
-- "A person following robot (ultra wideband based)" — youtube.com/watch?v=8F8UIbT1XXo
 
 ---
+
+## 6. Результаты системного поиска (15 запросов × 15 результатов)
+
+**Методология:** 15 поисковых запросов через DuckDuckGo API (`ddgs`), от общих ("UWB positioning trilateration algorithm") до специфичных ("BU04 Ai-Thinker UWB robot follow"). Каждый запрос — 15 результатов. Итого: **202 уникальных находки** после дедупликации.
+
+**Статистика находок:** 16 GitHub проектов, 31 научная статья, 17 туториалов/сборок, 6 видео на YouTube.
+
+### 6.1. Новые GitHub проекты (не описанные ранее)
+
+| Проект | Суть | Применимость |
+|--------|------|-------------|
+| **HeadTriXz/DWM3000-ESP32** | Arduino-библиотека для DW3000, альтернатива Makerfabs | ⭐⭐⭐⭐ |
+| **yws94/UWB_Multi-Ranging_DW3000** | Multi-ranging с DW3000 — несколько якорей одновременно | ⭐⭐⭐⭐⭐ |
+| **MISTLab/RangeTracker** | Точный трекинг с одним UWB якорем (single-anchor) | ⭐⭐⭐⭐ |
+| **acshi/non-parametric-uwb** | Непараметрическая коррекция ошибок UWB | ⭐⭐⭐ |
+| **jremington/UWB-Indoor-Localization_Arduino** | Open source indoor localization на Arduino | ⭐⭐⭐ |
+| **AUVSL/UWB-Localization** | UWB localization проект (университетский) | ⭐⭐⭐ |
+| **advoard/advoard_localization** | ROS-пакет локализации с UWB | ⭐⭐⭐⭐ |
+| **mohd-nazrin/ros_uwb_dwm1001** | ROS Noetic пакет для DWM1001 | ⭐⭐⭐ |
+| **auvsiri/uwb-following** | UWB following робот | ⭐⭐⭐⭐ |
+
+### 6.2. Научные статьи — новые находки
+
+| Статья | Источник | Ключевой вывод |
+|--------|----------|----------------|
+| **Single UWB anchor position tracking** | arXiv:2005.10648 | Точный трекинг с ОДНИМ якорем — альтернатива трилатерации |
+| **UWB Radar on Mobile Robots** | arXiv:2512.01018 (2025) | DW3000 как радар для детекции препятствий |
+| **Fusing Odometry, UWB, Spatial Detections** | arXiv:2304.06264 | Слияние одометрии + UWB для multi-robot |
+| **UWB-IMU Sensor Fusion** | IEEE (2023) | Экспериментальная оценка UWB+IMU — точность, задержки |
+| **Following Vehicle Based on ROS** | IEEE:10314663 | Готовый ROS-робот с функцией следования |
+| **Enhanced Trilateration Algorithm** | ResearchGate (2016) | Улучшенная трилатерация — сравнение с базовой |
+| **Optimal 4-anchor layout** | ScienceDirect (2024) | Оптимальное размещение 4 якорей для точности |
+| **SALOS Single-Anchor Localization** | PubMed (2024) | Локализация с одним якорем — без трилатерации |
+| **UWB Lighter-Than-Air Robot** | PMC (2022) | UWB на дирижабле (!) — интересный концепт |
+| **Influence of Anchor Placement** | PMC (2025) | Как размещение якорей влияет на точность локализации |
+
+### 6.3. Туториалы и практические руководства
+
+| Ресурс | Платформа | Содержание |
+|--------|-----------|------------|
+| **Ai-Thinker BU04 Tutorial 1** | Medium (официальный!) | Пошаговый туториал от производителя: ranging + indoor positioning |
+| **BU03 Distance Measurement** | Hackster.io | Измерение расстояния BU03 до телефона |
+| **MaUWB unlimited anchors** | Hackaday.io | Auto-select до 8 якорей — готовая multi-anchor система |
+| **Follow me — part 4** | Hackaday.io | ROS робот с функцией "следуй за мной" |
+| **ESP32 UWB Indoor Positioning** | Instructables | Пошаговая сборка indoor positioning системы |
+| **MaUWB DW3000 STM32 AT Command** | Makerfabs Wiki | Официальная документация MaUWB — прямой аналог BU04 |
+| **CNX Software: MaUWB Review** | cnx-software.com | Обзор MaUWB — точность, качество, сравнение |
+| **Indoor Positioning MaUWB ESP32S3** | Electronic Clinic | Полный туториал с MaUWB ESP32S3 DW3000 |
+| **Reverse-engineered DWM1000 pinout** | dredyson.com | Разбор неизвестной DWM1000 платы — методика reverse engineering |
+| **Kalman Filter Sensor Fusion** | Medium | От комплементарного фильтра до Калмана — туториал |
+
+### 6.4. Видео-демонстрации
+
+| Видео | Платформа | Что показано |
+|-------|-----------|-------------|
+| **UWB Trilateration ESP32 DW3000** | YouTube | Трилатерация в реальном времени |
+| **Home made person follow robot (UWB)** | YouTube | Самодельный робот-следователь на UWB |
+| **How to Use Qorvo DW3000 with ESP** | YouTube | Подключение и настройка DW3000 |
+| **ESP32 DW3000 Range Test 500m** | YouTube | Тест дальности — 500 метров! |
+| **Autonomous navigation robot ROS** | YouTube | Автономный робот на ROS с UWB |
+
+### 6.5. Коммерческие решения и экосистема
+
+| Продукт | Сайт | Что это |
+|---------|------|---------|
+| **RTLOC** | rtloc.com | Коммерческая UWB RTLS система — референс для индустрии |
+| **MaUWB** | Makerfabs/wiki | Китайский аналог BU04 — STM32+AT+DW3000 |
+| **ESP32 UWB Pro** | how2electronics.com | ESP32 + DW3000 с усилителем — дальность до 500м |
+| **BlueIOT** | blueiot.com | Китайская indoor positioning компания — обзор технологий |
 
 ## 7. Патентный ландшафт — анализ
 
